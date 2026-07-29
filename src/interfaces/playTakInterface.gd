@@ -123,11 +123,8 @@ func onLogout():
 	while socket.get_ready_state() != WebSocketPeer.STATE_CLOSED:
 		await get_tree().create_timer(.1).timeout
 		socket.poll()
-
-	
 	
 	logout.emit()
-	ChatTab.clear()
 	
 	activeUsername = ""
 
@@ -164,7 +161,7 @@ func _process(delta: float):
 	
 	var nt = Time.get_unix_time_from_system()
 	socket.poll()
-
+	
 	var state = socket.get_ready_state()
 	if state != WebSocketPeer.STATE_OPEN:
 		var u = activeUsername
@@ -179,7 +176,7 @@ func _process(delta: float):
 				Notif.message("You were disconnected")
 				return
 		else:
-			print("websocket closed with code %d, reason: %d | trying to reconnect" % [socket.get_close_code(), socket.get_close_reason()])
+			print("websocket closed with code %s, reason: %s | trying to reconnect" % [socket.get_close_code(), socket.get_close_reason()])
 			if not await signIn(u, activePass):
 				Notif.message("Disconnected Unexpectedly!", false)
 				return
@@ -293,13 +290,12 @@ func _process(delta: float):
 				ChatTab.parseMsg("Global", user.lstrip("<").rstrip(">"), " ".join(data.slice(2)))
 
 			["Joined", "room", var room]:
+				print("joined room %s" % room)
 				ChatTab.newChat(room, Chat.ROOM)
 			
-			["Left", "room", var room]:
-				pass #not sure if this even ever happens, playtak doesnt seem to handle it 
-				#well perhaps i was stupid for writing that ^
-				#because i realize that we probably *should* tell playtak that we left the room, so we dont get messages from it
-			
+			["Left", "room", var room]:  #this is in the api docs, but it *never* gets called seemingly
+				ChatTab.remove(room)
+				
 			["ShoutRoom", var room, var user, ..]:
 				ChatTab.parseMsg(room, user.lstrip("<").rstrip(">"), " ".join(data.slice(3)))
 				
@@ -447,3 +443,7 @@ func makeGame(data: PackedStringArray) -> GameData:
 		SeekData.ratingType(data[13], data[14])
 		)
 		
+
+func leavechat(room: String):
+	ChatTab.remove(room)
+	socket.send_text("LeaveRoom %s" % room)

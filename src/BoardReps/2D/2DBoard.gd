@@ -10,47 +10,28 @@ class_name Board2D
 @export var heightOffset: float = 2
 var portrait = false
 
-
-var pieceSize: float: 
-	set(value): 
-		for i in pieces: i.scale *= value / pieceSize
-		pieceSize = value
-
-var sq: Texture2D:
-	set(t):
-		sq = t
-		var s = t.get_width() / 15
-		board.region_rect.size = Vector2.ONE * size * s
-		board.region_rect.position.x = size % 2 * 8 * s
-		board.region_rect.position.y = [0, 8, 14][(8-size)/2] * s
-		
-		board.texture = t
-		board.scale = Vector2.ONE * (16.0/s)
-
-var WhiteTex: Array[Texture2D]:
-	set(value):
-		if value.size() != 4 or null in value:
-			Notif.message("Failed to load white textures")
-			return
-		WhiteTex = value
-		if pieces.size() > 0: setState(GameLogic.viewedState())
-
-var BlackTex: Array[Texture2D]:
-	set(value):
-		if value.size() != 4 or null in value:
-			Notif.message("Failed to load black textures")
-			return
-		BlackTex = value
-		if pieces.size() > 0: setState(GameLogic.viewedState())
-
 @export var highlightMaterial: ShaderMaterial
+@export var LabelSets: LabelSettings
 
 var pieces: Array[Piece2D] = []
 
 
 func _ready():
+	settings = BoardSettings.loadOrNew(Settings2D)
+	settings.update.connect(updateSettings)
+	board.texture = settings.sq
 	super()
 	get_viewport().size_changed.connect(resizeCam)
+
+func updateSettings():
+	var w = settings.sq.get_width() / 15
+	board.texture = settings.sq
+		
+	board.region_rect.size = Vector2.ONE * size * w
+	board.region_rect.position.x = size % 2 * 8 * w
+	board.region_rect.position.y = [0, 8, 14][(8-size)/2] * w
+	board.scale = Vector2.ONE * (16.0/w)
+	setState(GameLogic.viewedState())
 
 
 func resizeCam():
@@ -60,30 +41,30 @@ func resizeCam():
 		portrait = c.y > c.x
 		setState.call_deferred(GameLogic.viewedState())
 		
-	var sizeLimit = Vector2(size * 16 + 18, size * 16 + 48) if portrait else Vector2(size * 16 + 48, size * 16 + 18)
+	var sizeLimit = Vector2(size * 16 + 2, size * 16 + 30) if portrait else Vector2(size * 16 + 30, size * 16 + 2)
 	var z: Vector2 = c / sizeLimit
 	cam.zoom = Vector2.ONE * min(z.x, z.y)
 
 
-func setData(data: SettingData):
-	WhiteTex = data.white2D
-	BlackTex = data.black2D
-	
-	pieceSize = data.pieceScale2D
-	
-	if not self.is_node_ready():
-		await self.ready
-	sq = data.sq2D
+#func setData(data: BoardSettings):
+	#assert(data is Settings2D, "2D board needs 2D Settings")
+	#WhiteTex = data.white2D
+	#BlackTex = data.black2D
+	#
+	#pieceSize = data.pieceScale2D
+	#
+	#if not self.is_node_ready():
+		#await self.ready
+	#sq = data.sq2D
 
 
 func makeBoard():
-	if sq != null:
-		var w = sq.get_width() / 15
-			
-		board.region_rect.size = Vector2.ONE * size * w
-		board.region_rect.position.x = size % 2 * 8 * w
-		board.region_rect.position.y = [0, 8, 14][(8-size)/2] * w
-		board.scale = Vector2.ONE * (16.0/w)
+	var w = settings.sq.get_width() / 15
+		
+	board.region_rect.size = Vector2.ONE * size * w
+	board.region_rect.position.x = size % 2 * 8 * w
+	board.region_rect.position.y = [0, 8, 14][(8-size)/2] * w
+	board.scale = Vector2.ONE * (16.0/w)
 		
 	for i in pieces:
 		reserves.remove_child(i)
@@ -96,40 +77,39 @@ func makeBoard():
 	
 	for i in size:
 		var l = Label.new()
-		var s = l.get_theme_default_font().get_char_size(i+49, 32) * .1
-		l.text = char(i+49)
-		l.add_theme_font_size_override(&"font_size", 32)
-		l.scale = Vector2.ONE * .2
-		l.position = Vector2(-16 * size/2.0 - 2, 16 * (size/2.0 - i - .5)) - s
+		l.text = char(i + 49)
+		l.label_settings = LabelSets
+		l.scale = Vector2.ONE * .1
+		l.position = Vector2(.5 - 16 * size/2.0, 16 * (size/2.0 - i - 1))
 		add_child(l)
-
+		
 		l = Label.new()
-		s = l.get_theme_default_font().get_char_size(i+49, 32) * .1
+		var s = l.get_theme_default_font().get_char_size(i+49, 32) * .1
 		l.text = char(i + 65)
-		l.add_theme_font_size_override(&"font_size", 32)
-		l.scale = Vector2.ONE * .2
-		l.position = Vector2(- 16 * (size/2.0 - i - .5), 16 * size/2.0 + 4) - s
+		l.label_settings = LabelSets
+		l.scale = Vector2.ONE * .1
+		l.position = Vector2(-16 * (size/2.0 - i - 1), 16 * size/2.0) - s
 		add_child(l)
 	
 	var piece
 	for i in caps:
-		piece = Piece2D.new(WhiteTex[CAP], pieceSize)
+		piece = Piece2D.new(settings.white[CAP], settings.size)
 		reserves.add_child(piece)
 		pieces.append(piece)
 		putReserve(2*i)
 		
-		piece = Piece2D.new(BlackTex[CAP], pieceSize)
+		piece = Piece2D.new(settings.black[CAP], settings.size)
 		reserves.add_child(piece)
 		pieces.append(piece)
 		putReserve(2*i + 1)
 
 	for i in flats:
-		piece = Piece2D.new(WhiteTex[FLAT], pieceSize)
+		piece = Piece2D.new(settings.white[FLAT], settings.size)
 		reserves.add_child(piece)
 		pieces.append(piece)
 		putReserve(2*(caps+i))
 		
-		piece = Piece2D.new(BlackTex[FLAT], pieceSize)
+		piece = Piece2D.new(settings.black[FLAT], settings.size)
 		reserves.add_child(piece)
 		pieces.append(piece)
 		putReserve(2*(caps+i) + 1)
@@ -137,7 +117,7 @@ func makeBoard():
 
 func setPieceState(id: int, state: int):
 	pieces[id].rotation = 0 if state != WALL else PI/4 if id%2 == 0 else -PI/4
-	pieces[id].texture = WhiteTex[state] if id%2 == 0 else BlackTex[state]
+	pieces[id].texture = settings.white[state] if id%2 == 0 else settings.black[state]
 
 
 func putPiece(id: int, v: Vector3i):
@@ -150,7 +130,7 @@ func putPiece(id: int, v: Vector3i):
 	if v.y < 0:
 		#pieces[id].scale = Vector2(pieceSize * 4, .9) / pieces[id].texture.get_size()
 		#pieces[id].texture = WhiteSmol if id % 2 == 0 else BlackSmol
-		p = Vector2((v.x - size/2.0 + .5 + pieceSize * .65) * 16, (size/2.0 - v.z - .5 + pieceSize * .4) * 16 - (v.y + h - size))
+		p = Vector2((v.x - size/2.0 + .5 + settings.size * .65) * 16, (size/2.0 - v.z - .5 + settings.size * .4) * 16 - (v.y + h - size))
 	else:
 		#pieces[id].scale = pieceSize * 16 * Vector2.ONE / pieces[id].texture.get_width()
 		#if id >= 2*caps: pieces[id].texture = WhiteFlat if id % 2 == 0 else BlackFlat #TODO handle if this is a wall
@@ -164,18 +144,18 @@ func putPiece(id: int, v: Vector3i):
 
 func putReserve(id: int):
 	var p: Vector2
-	pieces[id].scale = pieceSize * 16 * Vector2.ONE / pieces[id].texture.get_size()
+	pieces[id].scale = settings.size * 16 * Vector2.ONE / pieces[id].texture.get_size()
 	if id < 2*caps:
 		p = Vector2(
-			16 * (size/2.0 + .75) * (-1 if id %2 == 1 else 1),
-			16 * (size/2.0 - .75 - (id/2 + flats) * (size-1) / (caps+flats - 1.0))
+			16 * (size/2.0 + .5) * (-1 if id %2 == 1 else 1),
+			16 * (size/2.0 - .75 - (id/2 + flats) * (size-1) / float(caps+flats))
 		)
 		pieces[id].z_index = (id/2 + flats)
-		
+	
 	else:
 		p = Vector2(
-			16 * (size/2.0 + .75) * (-1 if id %2 == 1 else 1),
-			16 * (size/2.0 - (id/2 - caps) * (size-1) / (caps+flats - 1.0))
+			16 * (size/2.0 + .5) * (-1 if id %2 == 1 else 1),
+			16 * (size/2.0 - (id/2 - caps) * (size-1) / float(caps+flats) - settings.size/2) 
 		)
 		pieces[id].z_index = (id/2 - caps)
 	
@@ -183,8 +163,7 @@ func putReserve(id: int):
 		p = Vector2(p.y, p.x)
 		if playAbleColor == BLACK_MASK:
 			p.y *= -1
-		p += Vector2(-3,3)
-		
+	
 	pieces[id].setPosition(p)
 
 
