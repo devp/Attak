@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
-# Build a debug-signed Android APK for Attak, headlessly.
+# Build an Android APK for Attak, headlessly.
 #
-# The Android preset uses Godot's prebuilt android_debug.apk template
-# (gradle_build/use_gradle_build=false), so this needs no Gradle, no NDK and no
-# Android platform SDK -- only apksigner from build-tools, plus a JDK for keytool.
+# The Android presets use Godot's prebuilt android_debug.apk / android_release.apk
+# templates (gradle_build/use_gradle_build=false), so this needs no Gradle, no NDK
+# and no Android platform SDK -- only apksigner from build-tools, plus a JDK for
+# keytool.
 #
 # Usage:  tools/build-apk.sh [output.apk]
 #
-# Honours these environment variables, and otherwise guesses:
+# Environment:
 #   GODOT          path to the Godot 4.4.1 editor binary   (default: godot)
 #   ANDROID_HOME   Android SDK root                        (default: $ANDROID_SDK_ROOT, then /opt/android-sdk)
-#   JAVA_HOME      JDK root
+#   JAVA_HOME      JDK root                                (default: derived from `java`)
+#   PRESET         export preset name                      (default: Android)
+#                    "Android"       arm64-v8a + armeabi-v7a, ~56 MB
+#                    "Android arm64" arm64-v8a only, ~30 MB
+#   RELEASE        set to 1 to export release instead of debug. Release builds are
+#                  ~10% smaller, but strip asserts -- prefer debug while testing
+#                  game logic, since src/Logic/gameState.gd relies on assertions.
 
 set -euo pipefail
 
@@ -18,7 +25,11 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GODOT_VERSION="4.4.1"
 GODOT="${GODOT:-godot}"
 ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}"
+PRESET="${PRESET:-Android}"
+RELEASE="${RELEASE:-0}"
 OUTPUT="${1:-$PROJECT_ROOT/build/android/Attak.apk}"
+
+KEYSTORE_DIR="$HOME/.local/share/godot/keystores"
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -31,8 +42,9 @@ case "$actual_version" in
 esac
 
 templates_dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
-[ -f "$templates_dir/android_debug.apk" ] || die \
-	"missing $templates_dir/android_debug.apk -- install the export templates for $GODOT_VERSION"
+template=$([ "$RELEASE" = 1 ] && echo android_release.apk || echo android_debug.apk)
+[ -f "$templates_dir/$template" ] || die \
+	"missing $templates_dir/$template -- install the export templates for $GODOT_VERSION"
 
 [ -d "$ANDROID_HOME/build-tools" ] || die "no build-tools under $ANDROID_HOME (need apksigner)"
 [ -d "$ANDROID_HOME/platform-tools" ] || die "no platform-tools under $ANDROID_HOME (Godot validates adb is present)"
@@ -41,12 +53,12 @@ java_home="${JAVA_HOME:-}"
 if [ -z "$java_home" ]; then
 	java_home="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
 fi
-[ -x "$java_home/bin/keytool" ] || die "no keytool under $java_home/bin (Godot generates the debug keystore with it)"
+keytool="$java_home/bin/keytool"
+[ -x "$keytool" ] || die "no keytool under $java_home/bin"
 
 # Godot reads the SDK and JDK locations from *editor settings*, not from the
-# environment, so write them in. The debug keystore itself does not need to be
-# created by hand: Godot's _create_editor_debug_keystore_if_needed() runs keytool
-# on first export.
+# environment, so write them in. (The keystore paths do have env overrides --
+# see below -- but these two do not.)
 settings="$HOME/.config/godot/editor_settings-4.4.tres"
 mkdir -p "$(dirname "$settings")"
 if [ ! -f "$settings" ]; then
@@ -64,6 +76,42 @@ for key, value in (("export/android/android_sdk_path", sdk),
 open(path, "w").write(text)
 PY
 
+mkdir -p "$KEYSTORE_DIR"
+
+if [ "$RELEASE" = 1 ]; then
+	# The release preset has no keystore configured (upstream signs by hand), so
+	# supply one through Godot's env overrides. Generated on first use; this is a
+	# personal sideloading key, not a publishing key.
+	export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="${GODOT_ANDROID_KEYSTORE_RELEASE_PATH:-$KEYSTORE_DIR/attak-personal.keystore}"
+	export GODOT_ANDROID_KEYSTORE_RELEASE_USER="${GODOT_ANDROID_KEYSTORE_RELEASE_USER:-attak}"
+	export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="${GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD:-attakattak}"
+	if [ ! -f "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH" ]; then
+		echo "==> generating personal release keystore at $GODOT_ANDROID_KEYSTORE_RELEASE_PATH"
+		"$keytool" -keyalg RSA -genkeypair \
+			-alias "$GODOT_ANDROID_KEYSTORE_RELEASE_USER" \
+			-keypass "$GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD" \
+			-keystore "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH" \
+			-storepass "$GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD" \
+			-dname "CN=Attak Personal Build, O=Attak, C=US" -validity 10950
+	fi
+else
+	# Godot generates the debug keystore itself on export, but only when its
+	# editor settings already name a path. Do it explicitly so a fresh container
+	# (or CI image) can't fall through to an unsigned APK.
+	export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="${GODOT_ANDROID_KEYSTORE_DEBUG_PATH:-$KEYSTORE_DIR/debug.keystore}"
+	export GODOT_ANDROID_KEYSTORE_DEBUG_USER="${GODOT_ANDROID_KEYSTORE_DEBUG_USER:-androiddebugkey}"
+	export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="${GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD:-android}"
+	if [ ! -f "$GODOT_ANDROID_KEYSTORE_DEBUG_PATH" ]; then
+		echo "==> generating debug keystore at $GODOT_ANDROID_KEYSTORE_DEBUG_PATH"
+		"$keytool" -keyalg RSA -genkeypair \
+			-alias "$GODOT_ANDROID_KEYSTORE_DEBUG_USER" \
+			-keypass "$GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD" \
+			-keystore "$GODOT_ANDROID_KEYSTORE_DEBUG_PATH" \
+			-storepass "$GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD" \
+			-dname "CN=Android Debug, O=Android, C=US" -validity 9999
+	fi
+fi
+
 cd "$PROJECT_ROOT"
 
 # Generate .godot/ import caches. The export fails without them, and a fresh
@@ -71,17 +119,21 @@ cd "$PROJECT_ROOT"
 echo "==> importing resources"
 "$GODOT" --headless --import
 
-# The preset's own export_path points outside the repo (../attak-Build/...), so
+# The presets' own export_path points outside the repo (../attak-Build/...), so
 # always pass an explicit absolute output path.
 mkdir -p "$(dirname "$OUTPUT")"
-echo "==> exporting $OUTPUT"
-"$GODOT" --headless --export-debug "Android" "$OUTPUT"
+mode=$([ "$RELEASE" = 1 ] && echo --export-release || echo --export-debug)
+echo "==> exporting $OUTPUT  (preset: $PRESET, $mode)"
+"$GODOT" --headless "$mode" "$PRESET" "$OUTPUT"
 
 [ -f "$OUTPUT" ] || die "export reported success but produced no APK"
 
 echo "==> verifying"
 "$ANDROID_HOME"/build-tools/*/apksigner verify "$OUTPUT" \
 	|| die "apksigner could not verify the output"
+
+# Godot leaves a v4 signature sidecar behind; it isn't needed to install.
+rm -f "$OUTPUT.idsig"
 
 echo
 echo "built $(du -h "$OUTPUT" | cut -f1)  $OUTPUT"

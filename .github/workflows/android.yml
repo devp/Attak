@@ -56,23 +56,26 @@ jobs:
           unzip -q /tmp/templates.tpz -d /tmp/tpz
           mv /tmp/tpz/templates ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
 
-      - name: Build APK
+      - name: Build APKs
         run: |
           export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           chmod +x "$GODOT" tools/build-apk.sh
-          tools/build-apk.sh "$PWD/build/android/Attak.apk"
+          # Universal build, matching what upstream ships.
+          PRESET="Android" tools/build-apk.sh "$PWD/build/android/Attak.apk"
+          # arm64-only, roughly half the size and easier to pull onto a phone.
+          PRESET="Android arm64" tools/build-apk.sh "$PWD/build/android/Attak_arm64.apk"
 
-      - name: Upload APK
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
           name: Attak-apk
-          path: build/android/Attak.apk
+          path: build/android/*.apk
           if-no-files-found: error
 
-      - name: Attach APK to prerelease
+      - name: Attach APKs to prerelease
         if: startsWith(github.ref, 'refs/tags/android-')
         uses: softprops/action-gh-release@v2
         with:
-          files: build/android/Attak.apk
+          files: build/android/*.apk
           prerelease: true
           fail_on_unmatched_files: true
