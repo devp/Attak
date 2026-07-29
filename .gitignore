@@ -1,0 +1,10 @@
+# Godot
+.godot/
+*.translation
+
+# Build output
+build/
+android/
+
+# Native GDExtension build artifacts
+native/target/
