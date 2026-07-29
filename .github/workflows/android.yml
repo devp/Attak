@@ -56,6 +56,19 @@ jobs:
           unzip -q /tmp/templates.tpz -d /tmp/tpz
           mv /tmp/tpz/templates ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
 
+      # Run these with the editor binary, before exporting: GameState's asserts
+      # are compiled out of release templates, so an illegal move would slip
+      # through silently in an exported build.
+      - name: Run tests
+        run: |
+          export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          chmod +x "$GODOT"
+          "$GODOT" --headless --import
+          for t in moveGenTest botTest botUiTest; do
+            echo "== $t"
+            "$GODOT" --headless "tools/$t.tscn" || exit 1
+          done
+
       - name: Build APKs
         run: |
           export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
