@@ -37,7 +37,7 @@ func _ready() -> void:
 			_fail("pressing the Bot tab did not show the Bot panel")
 
 		await _startGameAndCheckReply(panel)
-		await _checkTiltakOption(panel)
+		await _checkTakticianOption(panel)
 
 	print("")
 	if failures.is_empty():
@@ -98,48 +98,47 @@ func _startGameAndCheckReply(panel: Node) -> void:
 		_fail("bot did not answer our move")
 
 
-# The tiltak difficulties are only meaningful when the GDExtension is present.
+# The Taktician difficulties are only meaningful when the GDExtension is present.
 # When it is, playing through the tab is the end-to-end check that the native
 # engine actually answers; when it isn't, the options must be gone rather than
 # offered and broken.
-func _checkTiltakOption(panel: Node) -> void:
-	var available: bool = TiltakBot.available()
-	var idx: int = panel.diffEntry.get_item_index(BotMenu.DIFFICULTY.TILTAK_FAST)
+func _checkTakticianOption(panel: Node) -> void:
+	var available: bool = TakticianBot.available()
+	var idx: int = panel.diffEntry.get_item_index(BotMenu.DIFFICULTY.TAKTICIAN_FAST)
 
 	if not available:
 		if idx != -1:
-			_fail("tiltak is unavailable but the Tiltak difficulty is still offered")
+			_fail("Taktician is unavailable but the Taktician difficulty is still offered")
 		else:
-			print("note: TiltakEngine not built for this platform, tiltak path skipped")
+			print("note: TakticianEngine not built for this platform, Taktician path skipped")
 		return
 
 	if idx == -1:
-		_fail("tiltak is available but the Tiltak difficulty is missing from the dropdown")
+		_fail("Taktician is available but the Taktician difficulty is missing from the dropdown")
 		return
 
-	# 5x5 is inside tiltak's supported set, so this must actually use the engine.
 	panel.diffEntry.select(idx)
-	panel.sizeEntry.select(2)
+	panel.sizeEntry.select(2)    # 5x5
 	panel.colorEntry.select(1)   # bot opens as White
 
 	panel.start()
 	await get_tree().process_frame
 
-	if panel.tiltakBot == null:
-		_fail("no TiltakBot was created despite the engine being available")
+	if panel.takticianBot == null:
+		_fail("no TakticianBot was created despite the engine being available")
 		return
-	panel.tiltakBot.thinkDelay = 0.0
+	panel.takticianBot.thinkDelay = 0.0
 
-	if GameLogic.gameData.playerWhiteName.find("Tiltak") == -1:
-		_fail("expected tiltak to be named as White, got '%s'" % GameLogic.gameData.playerWhiteName)
+	if GameLogic.gameData.playerWhiteName.find("Taktician") == -1:
+		_fail("expected Taktician to be named as White, got '%s'" % GameLogic.gameData.playerWhiteName)
 
 	if not await _waitForHistory(1):
-		_fail("tiltak never played its opening move")
+		_fail("Taktician never played its opening move")
 		return
 
 	var opening: Ply = GameLogic.history[0]
 	if opening == null:
-		_fail("tiltak's opening move did not land in the history")
+		_fail("Taktician's opening move did not land in the history")
 
 
 func _waitForHistory(target: int) -> bool:

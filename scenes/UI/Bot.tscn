@@ -64,9 +64,9 @@ popup/item_1/text = "Novice"
 popup/item_1/id = 1
 popup/item_2/text = "Careful"
 popup/item_2/id = 2
-popup/item_3/text = "Tiltak"
+popup/item_3/text = "Taktician"
 popup/item_3/id = 3
-popup/item_4/text = "Tiltak (strong)"
+popup/item_4/text = "Taktician (strong)"
 popup/item_4/id = 4
 
 [node name="Button" type="Button" parent="."]

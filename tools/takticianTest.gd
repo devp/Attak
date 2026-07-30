@@ -1,21 +1,29 @@
 extends Node
 
-# Differential test: Attak's GDScript move generator against tiltak's.
+# Differential test: Attak's GDScript move generator against Taktician's.
 #
-#   godot --headless tools/tiltakTest.tscn
+#   godot --headless tools/takticianTest.tscn
 #
-# This is the most valuable test in the project. tiltak is a mature, independently
-# written engine, so agreeing with its move list on thousands of positions is much
-# stronger evidence that src/Logic/moveGen.gd is correct than any self-consistency
-# check can be. It also pins down that our TPS output and PTN notation match what
-# a real engine expects, which is what any engine integration rides on.
+# This is the most valuable test in the project. Taktician is a mature,
+# independently written engine, so agreeing with its move list on thousands of
+# positions is much stronger evidence that src/Logic/moveGen.gd is correct than
+# any self-consistency check can be. It also pins down that our TPS output and PTN
+# notation match what a real engine expects, which is what any engine integration
+# rides on.
+#
+# Taktician plays every size Attak offers, so unlike the engine this replaced the
+# comparison covers the whole range rather than the middle of it -- 3x3, 7x7 and
+# 8x8 were never checked against anything before.
 #
 # Skips cleanly (exit 0) when the GDExtension is not built for this platform, so
 # it can sit in CI on platforms without the native library.
 
-const SIZES := [4, 5, 6]  # the sizes tiltak implements
+const SIZES := [3, 4, 5, 6, 7, 8]
 const GAMES_PER_SIZE := 6
-const SEARCH_NODES := 400
+
+# The search check below only needs a legal move, not a good one, and it runs on
+# every size -- so keep it shallow.
+const SEARCH_DEPTH := 3
 const SEARCH_TIMEOUT_SECONDS := 30.0
 
 var failures: Array[String] = []
@@ -25,34 +33,43 @@ var positionsCompared := 0
 
 func _ready() -> void:
 	# Skipping exits 0, so on its own a green run cannot distinguish "the engine
-	# agreed with us" from "the engine never loaded". Set REQUIRE_TILTAK=1 wherever
-	# the library is supposed to be present -- CI does -- to turn that into a
-	# failure.
-	var required := OS.get_environment("REQUIRE_TILTAK") == "1"
+	# agreed with us" from "the engine never loaded". Set REQUIRE_TAKTICIAN=1
+	# wherever the library is supposed to be present -- CI does -- to turn that
+	# into a failure.
+	var required := OS.get_environment("REQUIRE_TAKTICIAN") == "1"
 
-	if not ClassDB.class_exists("TiltakEngine"):
+	if not ClassDB.class_exists("TakticianEngine"):
 		if required:
-			print("FAIL  REQUIRE_TILTAK=1 but TiltakEngine did not load.")
+			print("FAIL  REQUIRE_TAKTICIAN=1 but TakticianEngine did not load.")
 			print("  - the GDExtension is missing, or failed to dlopen for this platform")
 			get_tree().quit(1)
 			return
-		print("SKIP  TiltakEngine is not available (GDExtension not built for this platform)")
+		print("SKIP  TakticianEngine is not available (GDExtension not built for this platform)")
 		get_tree().quit(0)
 		return
 
 	rng.seed = 909090
 
-	var engine = ClassDB.instantiate("TiltakEngine")
+	var engine = ClassDB.instantiate("TakticianEngine")
 
 	var sizes: PackedInt32Array = engine.supported_sizes()
 	if Array(sizes) != SIZES:
 		_fail("engine reports supported sizes %s, expected %s" % [Array(sizes), SIZES])
 
-	# Sizes Attak offers but tiltak cannot play must be refused, not crashed on --
-	# tiltak panics internally on unsupported sizes.
-	for size in [3, 7, 8]:
+	# Every size the menu offers must be playable, and anything outside the range
+	# must be refused rather than crashed on -- Taktician indexes per-size tables
+	# and panics past their end.
+	for size in SIZES:
+		if not engine.new_game(size, 0):
+			_fail("engine refused supported size %d" % size)
+	for size in [2, 9]:
 		if engine.new_game(size, 0):
-			_fail("engine accepted unsupported size %d" % size)
+			_fail("engine accepted out-of-range size %d" % size)
+
+	# Taktician has no komi. Refusing is what lets BotMenu fall back rather than
+	# play a subtly different game to the one shown on the board.
+	if engine.new_game(5, 4):
+		_fail("engine accepted a komi game it cannot actually play")
 
 	for size in SIZES:
 		for game in GAMES_PER_SIZE:
@@ -62,7 +79,7 @@ func _ready() -> void:
 
 	print("")
 	if failures.is_empty():
-		print("PASS  move lists agree with tiltak across %d positions (sizes %s)"
+		print("PASS  move lists agree with Taktician across %d positions (sizes %s)"
 			% [positionsCompared, SIZES])
 		get_tree().quit(0)
 	else:
@@ -93,13 +110,13 @@ func _compareGame(engine, size: int, gameIndex: int) -> void:
 		var ours := MoveGen.legalPlies(state)
 		if ours.is_empty(): return
 
-		# tiltak's own opening handling is built in, so the swap plies are compared
+		# Taktician's own opening handling is built in, so the swap plies are compared
 		# too -- they are exactly where our placedColor rule could be wrong.
 		var tps := state.getTPS()
 		var theirs: PackedStringArray = engine.legal_moves(tps)
 
 		if theirs.is_empty():
-			_fail("size %d game %d: tiltak returned no moves for TPS %s" % [size, gameIndex, tps])
+			_fail("size %d game %d: Taktician returned no moves for TPS %s" % [size, gameIndex, tps])
 			return
 
 		_compare(ours, theirs, size, gameIndex, tps)
@@ -131,12 +148,12 @@ func _compare(ours: Array[Ply], theirs: PackedStringArray, size: int, gameIndex:
 
 	if not missing.is_empty():
 		missing.sort()
-		_fail("size %d game %d: we miss %d legal move(s) tiltak found: %s\n    TPS: %s"
+		_fail("size %d game %d: we miss %d legal move(s) Taktician found: %s\n    TPS: %s"
 			% [size, gameIndex, missing.size(), ", ".join(missing.slice(0, 8)), tps])
 
 	if not extra.is_empty():
 		extra.sort()
-		_fail("size %d game %d: we generate %d move(s) tiltak considers illegal: %s\n    TPS: %s"
+		_fail("size %d game %d: we generate %d move(s) Taktician considers illegal: %s\n    TPS: %s"
 			% [size, gameIndex, extra.size(), ", ".join(extra.slice(0, 8)), tps])
 
 
@@ -168,7 +185,7 @@ func _checkSearch(engine) -> void:
 			NewSeek.standardCaps[size - 3], 0.0)
 		var tps := state.getTPS()
 
-		if not engine.start_search(tps, SEARCH_NODES, 0):
+		if not engine.start_search(tps, SEARCH_DEPTH, 0, 0):
 			_fail("size %d: start_search refused TPS %s" % [size, tps])
 			continue
 
@@ -187,11 +204,11 @@ func _checkSearch(engine) -> void:
 
 		var parsed := Ply.fromPTN(ptn)
 		if parsed == null:
-			_fail("size %d: could not parse tiltak's move %s" % [size, ptn])
+			_fail("size %d: could not parse Taktician's move %s" % [size, ptn])
 			continue
 
 		var legal := {}
 		for ply in MoveGen.legalPlies(state):
 			legal[_normalise(ply.toPTN())] = true
 		if not legal.has(_normalise(ptn)):
-			_fail("size %d: tiltak played %s, which we consider illegal" % [size, ptn])
+			_fail("size %d: Taktician played %s, which we consider illegal" % [size, ptn])

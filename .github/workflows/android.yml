@@ -59,6 +59,15 @@ jobs:
           unzip -q /tmp/templates.tpz -d /tmp/tpz
           mv /tmp/tpz/templates ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
 
+      # The engine is Go behind a Rust GDExtension shim, so both toolchains are
+      # needed. Go ships on the runner image, but not necessarily at the version
+      # native/go/go.mod asks for.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: native/go/go.sum
+
       - name: Cache Rust build
         uses: actions/cache@v4
         with:
@@ -69,14 +78,13 @@ jobs:
           key: cargo-${{ hashFiles('native/Cargo.lock') }}
           restore-keys: cargo-
 
-      # The tiltak GDExtension. Built for Android arm64 and for the runner's own
-      # x86_64, so the tests below can exercise the native engine too.
+      # The Taktician GDExtension. Built for Android arm64 and for the runner's
+      # own x86_64, so the tests below can exercise the native engine too.
       #
-      # Only the NDK's clang is needed as a linker -- nothing on this dependency
-      # path uses bindgen, so CLANG_PATH is not required. tiltak is depended on
-      # with default-features off, which drops its mimalloc default and keeps the
-      # cross-compile free of any C build.
-      - name: Build tiltak GDExtension
+      # The NDK's clang serves twice over: as cargo's linker, and -- via
+      # native/build.rs, which reads the same variable -- as the C compiler cgo
+      # cross-compiles the Go archive with.
+      - name: Build Taktician GDExtension
         run: |
           set -eux
           rustup target add aarch64-linux-android
@@ -90,17 +98,17 @@ jobs:
           test -x "$linker"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$linker"
 
-          mkdir -p addons/tiltak/bin
+          mkdir -p addons/taktician/bin
           cargo build --release --manifest-path native/Cargo.toml --target aarch64-linux-android
-          cp native/target/aarch64-linux-android/release/libattak_tiltak.so \
-             addons/tiltak/bin/libattak_tiltak.android.arm64.so
+          cp native/target/aarch64-linux-android/release/libattak_taktician.so \
+             addons/taktician/bin/libattak_taktician.android.arm64.so
 
           cargo build --release --manifest-path native/Cargo.toml
-          cp native/target/release/libattak_tiltak.so \
-             addons/tiltak/bin/libattak_tiltak.linux.x86_64.so
+          cp native/target/release/libattak_taktician.so \
+             addons/taktician/bin/libattak_taktician.linux.x86_64.so
 
-          test -s addons/tiltak/bin/libattak_tiltak.android.arm64.so
-          file addons/tiltak/bin/*.so
+          test -s addons/taktician/bin/libattak_taktician.android.arm64.so
+          file addons/taktician/bin/*.so
 
       # Run these with the editor binary, before exporting: GameState's asserts
       # are compiled out of release templates, so an illegal move would slip
@@ -110,10 +118,10 @@ jobs:
           export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           chmod +x "$GODOT"
           "$GODOT" --headless --import
-          # The library was just built, so a skipped tiltak test means it failed to
-          # load -- REQUIRE_TILTAK turns that into a failure instead of a pass.
-          export REQUIRE_TILTAK=1
-          for t in moveGenTest botTest botUiTest tiltakTest; do
+          # The library was just built, so a skipped Taktician test means it failed
+          # to load -- REQUIRE_TAKTICIAN turns that into a failure, not a pass.
+          export REQUIRE_TAKTICIAN=1
+          for t in moveGenTest botTest botUiTest takticianTest; do
             echo "== $t"
             "$GODOT" --headless "tools/$t.tscn" || exit 1
           done
@@ -122,15 +130,15 @@ jobs:
         run: |
           export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           chmod +x "$GODOT" tools/build-apk.sh
-          # The one to sideload: arm64 with the tiltak engine, release-sized.
+          # The one to sideload: arm64 with the Taktician engine, release-sized.
           PRESET="Android arm64" RELEASE=1 \
-            tools/build-apk.sh "$PWD/build/android/Attak_arm64_tiltak.apk"
+            tools/build-apk.sh "$PWD/build/android/Attak_arm64_taktician.apk"
 
-          # Broad-compatibility build: both ABIs, and no GPL code at all (see
-          # LICENSE-THIRD-PARTY.md). Built without tiltak deliberately -- the
-          # extension is arm64-only, so including it here would leave 32-bit
-          # devices with a library they cannot load.
-          SKIP_TILTAK=1 PRESET="Android" RELEASE=1 \
+          # Broad-compatibility build: both ABIs, no engine. The extension is
+          # arm64-only, so including it here would leave 32-bit devices carrying a
+          # library they cannot load. Nothing to do with licensing -- Taktician is
+          # MIT, so it is free to ship anywhere it can actually run.
+          SKIP_TAKTICIAN=1 PRESET="Android" RELEASE=1 \
             tools/build-apk.sh "$PWD/build/android/Attak_universal.apk"
 
       - name: Upload APKs

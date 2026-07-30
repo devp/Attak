@@ -1,27 +1,40 @@
 extends BotInterface
-class_name TiltakBot
+class_name TakticianBot
 
-# Bot backed by the tiltak engine, via the GDExtension in addons/tiltak.
+# Bot backed by the Taktician engine, via the GDExtension in addons/taktician.
 #
-# tiltak is GPL-3.0-or-later, so it is deliberately confined to this file and the
-# native crate: LocalBot remains the default, licence-clean opponent, and builds
-# without the extension lose nothing but strength. See LICENSE-THIRD-PARTY.md.
+# Taktician is MIT licensed, so unlike the engine this replaced there is nothing
+# to quarantine: it can ship in a public build without a licensing decision. See
+# LICENSE-THIRD-PARTY.md. It also plays every board size Attak offers (3x3 to
+# 8x8), so there is no size that silently drops back to LocalBot.
 #
 # The engine class is only ever reached through ClassDB, never named as a type.
 # Naming a GDExtension class statically makes the *script* fail to parse wherever
 # the extension is absent -- the Web export, or any architecture we did not build
 # the library for -- which would take the whole Bot tab down with it.
 
-const ENGINE_CLASS := "TiltakEngine"
+const ENGINE_CLASS := "TakticianEngine"
 
-# Rough budgets. tiltak is far stronger than anything here needs, so the low end
-# is a deliberately small node count rather than a short clock.
+# Rough budgets. Taktician is far stronger than anything here needs, so the low
+# end is a shallow, reproducible search rather than a short clock.
 enum STRENGTH {
-	FAST,    # fixed node budget: quick, reproducible, still well beyond LocalBot
+	FAST,    # fixed depth: quick, reproducible, still well beyond LocalBot
 	STRONG,  # time budget: scales with whatever device this is running on
 }
 
-const FAST_NODES := 4000
+# Taktician deepens iteratively and decides between depths whether the next one
+# fits in what is left, so both limits below are checked at that boundary rather
+# than interrupting a search underway. Whatever stops it, the move played is the
+# best from the last depth it finished -- never a random one.
+#
+# Depth is what bounds FAST; MAX_EVALS is a backstop for the rare position where a
+# shallow search still explodes on a slow device.
+const FAST_DEPTH := 4
+const FAST_MAX_EVALS := 300000
+
+# STRONG leaves the depth open (0 means Taktician's own ceiling) and stops on the
+# clock instead. It often answers well inside this, having judged the next depth
+# too expensive to start.
 const STRONG_MILLIS := 3000
 
 # A search should never outlast this. If it does, something is wrong in the
@@ -40,11 +53,12 @@ static func available() -> bool:
 
 func _init() -> void:
 	_rng.randomize()
-	botName = "Tiltak"
+	botName = "Taktician"
 
 
 # Returns false when the engine cannot take this game, so the caller can fall
-# back to LocalBot instead. tiltak only implements 4x4, 5x5 and 6x6.
+# back to LocalBot instead. Taktician plays every size Attak offers, but it has
+# no notion of komi, so a komi game is refused.
 func newGame(size: int, halfKomi: int) -> bool:
 	if not available(): return false
 	if _engine == null:
@@ -55,7 +69,7 @@ func newGame(size: int, halfKomi: int) -> bool:
 
 func setStrength(s: int) -> void:
 	strength = s
-	botName = "Tiltak" if s == STRENGTH.FAST else "Tiltak (strong)"
+	botName = "Taktician" if s == STRENGTH.FAST else "Taktician (strong)"
 
 
 func supportsSize(size: int) -> bool:
@@ -69,11 +83,13 @@ func _chooseMove(state: GameState) -> Ply:
 	if _engine == null:
 		return await _fallback(state)
 
-	var nodes: int = FAST_NODES if strength == STRENGTH.FAST else 0
-	var millis: int = 0 if strength == STRENGTH.FAST else STRONG_MILLIS
+	var fast := strength == STRENGTH.FAST
+	var depth: int = FAST_DEPTH if fast else 0
+	var millis: int = 0 if fast else STRONG_MILLIS
+	var maxEvals: int = FAST_MAX_EVALS if fast else 0
 
-	if not _engine.start_search(state.getTPS(), nodes, millis):
-		push_warning("tiltak refused the position, falling back to the built-in bot")
+	if not _engine.start_search(state.getTPS(), depth, millis, maxEvals):
+		push_warning("Taktician refused the position, falling back to the built-in bot")
 		return await _fallback(state)
 
 	# The search runs on its own thread inside the extension; poll it from here so
@@ -84,12 +100,12 @@ func _chooseMove(state: GameState) -> Ply:
 
 	var ptn: String = _engine.take_result()
 	if ptn.is_empty():
-		push_warning("tiltak returned no move, falling back to the built-in bot")
+		push_warning("Taktician returned no move, falling back to the built-in bot")
 		return await _fallback(state)
 
 	var ply := Ply.fromPTN(ptn)
 	if ply == null:
-		push_warning("could not parse tiltak's move '%s', falling back" % ptn)
+		push_warning("could not parse Taktician's move '%s', falling back" % ptn)
 		return await _fallback(state)
 
 	return ply

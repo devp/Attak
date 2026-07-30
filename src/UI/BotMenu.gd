@@ -12,16 +12,16 @@ class_name BotMenu
 # works with no account and no network.
 
 # Difficulty option ids. The first three run the built-in GDScript bot; the last
-# two need the tiltak GDExtension and are hidden when it is unavailable.
+# two need the Taktician GDExtension and are hidden when it is unavailable.
 enum DIFFICULTY {
 	RANDOM = 0,
 	NOVICE = 1,
 	CAREFUL = 2,
-	TILTAK_FAST = 3,
-	TILTAK_STRONG = 4,
+	TAKTICIAN_FAST = 3,
+	TAKTICIAN_STRONG = 4,
 }
 
-const TILTAK_IDS := [DIFFICULTY.TILTAK_FAST, DIFFICULTY.TILTAK_STRONG]
+const TAKTICIAN_IDS := [DIFFICULTY.TAKTICIAN_FAST, DIFFICULTY.TAKTICIAN_STRONG]
 
 @onready var colorEntry: OptionButton = $GridContainer/Color2
 @onready var sizeEntry: OptionButton = $GridContainer/Size2
@@ -29,19 +29,19 @@ const TILTAK_IDS := [DIFFICULTY.TILTAK_FAST, DIFFICULTY.TILTAK_STRONG]
 
 @onready var localBot: LocalBot = $Bot
 
-var tiltakBot: TiltakBot = null
+var takticianBot: TakticianBot = null
 
 
 func _ready() -> void:
 	$Button.pressed.connect(start)
 
-	if TiltakBot.available():
-		tiltakBot = TiltakBot.new()
-		add_child(tiltakBot)
+	if TakticianBot.available():
+		takticianBot = TakticianBot.new()
+		add_child(takticianBot)
 	else:
 		# No native engine on this platform (the Web export has no GDExtension at
 		# all). Drop the options rather than offering something that cannot run.
-		for id in TILTAK_IDS:
+		for id in TAKTICIAN_IDS:
 			var idx := diffEntry.get_item_index(id)
 			if idx != -1: diffEntry.remove_item(idx)
 
@@ -76,15 +76,15 @@ func start() -> void:
 	bot.startGame(game)
 
 
-# Chooses the engine, falling back to the built-in bot whenever tiltak cannot
-# take the game -- it only implements 4x4, 5x5 and 6x6, while Attak offers 3-8.
+# Chooses the engine. Taktician plays every size this menu offers, so the fallback
+# below is for a genuine engine failure rather than an unsupported board.
 func _pickBot(size: int, difficulty: int) -> BotInterface:
-	if difficulty in TILTAK_IDS and tiltakBot != null:
-		tiltakBot.setStrength(TiltakBot.STRENGTH.FAST if difficulty == DIFFICULTY.TILTAK_FAST \
-			else TiltakBot.STRENGTH.STRONG)
-		if tiltakBot.newGame(size, 0):
-			return tiltakBot
-		Notif.message("Tiltak doesn't play %dx%d - using the built-in bot." % [size, size])
+	if difficulty in TAKTICIAN_IDS and takticianBot != null:
+		takticianBot.setStrength(TakticianBot.STRENGTH.FAST if difficulty == DIFFICULTY.TAKTICIAN_FAST \
+			else TakticianBot.STRENGTH.STRONG)
+		if takticianBot.newGame(size, 0):
+			return takticianBot
+		Notif.message("Taktician couldn't start a %dx%d game - using the built-in bot." % [size, size])
 		localBot.setDifficulty(LocalBot.DIFFICULTY.THOUGHTFUL)
 		return localBot
 

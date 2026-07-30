@@ -33,11 +33,11 @@ The **Play → Vs Bot** tab starts a game against a bot with no account and no
 network connection. Pick a board size, your colour, and a difficulty.
 
 The first three difficulties run a small built-in GDScript opponent, which works
-on every platform including the web build. The two **Tiltak** difficulties run
-[tiltak](https://github.com/MortenLohne/tiltak) as a native extension — far
-stronger, but only on desktop and Android arm64, and only on 4x4, 5x5 and 6x6
-boards, which are the sizes tiltak implements. They are hidden automatically when
-unavailable.
+on every platform including the web build. The two **Taktician** difficulties run
+[Taktician](https://github.com/nelhage/taktician) as a native extension — far
+stronger, and on every board size from 3x3 to 8x8. That needs desktop or Android
+arm64; the web build has no GDExtension support at all, so there the options are
+hidden and the built-in bot stands in.
 
 ## Building
 
@@ -45,9 +45,12 @@ unavailable.
 the top of the script for the toolchain it expects. `.github/workflows/android.yml`
 runs the same script in CI and uploads the APKs as artifacts.
 
-The Tiltak extension is GPL-3.0-or-later, which has consequences for
-redistribution — see [LICENSE-THIRD-PARTY.md](LICENSE-THIRD-PARTY.md). Build with
-`SKIP_TILTAK=1` for an APK containing no GPL code.
+The Taktician extension is Go behind a small Rust GDExtension shim, so building it
+needs both toolchains — `cargo build --manifest-path native/Cargo.toml` drives
+both, and cross-compiling for Android additionally needs the NDK. Build with
+`SKIP_TAKTICIAN=1` for an APK with no native engine at all.
+
+Taktician is MIT licensed; see [LICENSE-THIRD-PARTY.md](LICENSE-THIRD-PARTY.md).
 
 ## Contributing
 Attak is an open source hobby project, if you want to help me out, let me know!
