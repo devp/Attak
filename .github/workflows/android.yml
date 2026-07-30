@@ -110,6 +110,9 @@ jobs:
           export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           chmod +x "$GODOT"
           "$GODOT" --headless --import
+          # The library was just built, so a skipped tiltak test means it failed to
+          # load -- REQUIRE_TILTAK turns that into a failure instead of a pass.
+          export REQUIRE_TILTAK=1
           for t in moveGenTest botTest botUiTest tiltakTest; do
             echo "== $t"
             "$GODOT" --headless "tools/$t.tscn" || exit 1

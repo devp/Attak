@@ -139,6 +139,11 @@ ANDROID_LIB="addons/tiltak/bin/libattak_tiltak.android.arm64.so"
 restore_gdextension() {
 	if [ -f "$GDEXTENSION.disabled" ]; then
 		mv "$GDEXTENSION.disabled" "$GDEXTENSION"
+		# Re-import before leaving. The build below runs --import while the
+		# extension is moved aside, which deregisters it from .godot/; putting the
+		# file back does not undo that, so anything run afterwards would silently
+		# not see the engine until the next import.
+		"$GODOT" --headless --import >/dev/null 2>&1 || true
 	fi
 }
 trap restore_gdextension EXIT
@@ -174,6 +179,19 @@ echo "==> exporting $OUTPUT  (preset: $PRESET, $mode)"
 
 echo "==> verifying with $APKSIGNER"
 "$APKSIGNER" verify "$OUTPUT" || die "apksigner could not verify the output"
+
+# Confirm the native engine really landed in the package. Godot only warns when a
+# GDExtension library is missing for an architecture, so without this an APK that
+# silently lost the engine would still look like a clean build.
+if [ -f "$GDEXTENSION" ]; then
+	entry=$(unzip -l "$OUTPUT" | awk '/libattak_tiltak/ {print $1; exit}')
+	if [ -z "$entry" ]; then
+		die "the tiltak extension is enabled but no libattak_tiltak was packaged into $OUTPUT"
+	elif [ "$entry" = "0" ]; then
+		die "libattak_tiltak was packaged into $OUTPUT as a 0-byte file; it would fail to load on device"
+	fi
+	echo "    tiltak engine packaged: $entry bytes"
+fi
 
 # Godot leaves a v4 signature sidecar behind; it isn't needed to install.
 rm -f "$OUTPUT.idsig"

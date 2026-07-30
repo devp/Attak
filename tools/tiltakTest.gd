@@ -24,7 +24,18 @@ var positionsCompared := 0
 
 
 func _ready() -> void:
+	# Skipping exits 0, so on its own a green run cannot distinguish "the engine
+	# agreed with us" from "the engine never loaded". Set REQUIRE_TILTAK=1 wherever
+	# the library is supposed to be present -- CI does -- to turn that into a
+	# failure.
+	var required := OS.get_environment("REQUIRE_TILTAK") == "1"
+
 	if not ClassDB.class_exists("TiltakEngine"):
+		if required:
+			print("FAIL  REQUIRE_TILTAK=1 but TiltakEngine did not load.")
+			print("  - the GDExtension is missing, or failed to dlopen for this platform")
+			get_tree().quit(1)
+			return
 		print("SKIP  TiltakEngine is not available (GDExtension not built for this platform)")
 		get_tree().quit(0)
 		return
