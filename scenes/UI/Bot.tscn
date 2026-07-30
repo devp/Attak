@@ -57,13 +57,17 @@ text = "Difficulty:"
 layout_mode = 2
 selected = 1
 allow_reselect = true
-item_count = 3
+item_count = 5
 popup/item_0/text = "Random"
 popup/item_0/id = 0
 popup/item_1/text = "Novice"
 popup/item_1/id = 1
 popup/item_2/text = "Careful"
 popup/item_2/id = 2
+popup/item_3/text = "Tiltak"
+popup/item_3/id = 3
+popup/item_4/text = "Tiltak (strong)"
+popup/item_4/id = 4
 
 [node name="Button" type="Button" parent="."]
 layout_mode = 2

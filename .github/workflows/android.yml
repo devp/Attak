@@ -56,6 +56,49 @@ jobs:
           unzip -q /tmp/templates.tpz -d /tmp/tpz
           mv /tmp/tpz/templates ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
 
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: cargo-
+
+      # The tiltak GDExtension. Built for Android arm64 and for the runner's own
+      # x86_64, so the tests below can exercise the native engine too.
+      #
+      # Only the NDK's clang is needed as a linker -- nothing on this dependency
+      # path uses bindgen, so CLANG_PATH is not required. tiltak is depended on
+      # with default-features off, which drops its mimalloc default and keeps the
+      # cross-compile free of any C build.
+      - name: Build tiltak GDExtension
+        run: |
+          set -eux
+          rustup target add aarch64-linux-android
+
+          ndk="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-$ANDROID_NDK_ROOT}}"
+          bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          # The linker's filename carries the target API level, and which levels
+          # ship varies by NDK release. Take the lowest available, which is the
+          # most permissive about the devices the result will run on.
+          linker=$(ls "$bin"/aarch64-linux-android[0-9]*-clang | sort -V | head -1)
+          test -x "$linker"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$linker"
+
+          mkdir -p addons/tiltak/bin
+          cargo build --release --manifest-path native/Cargo.toml --target aarch64-linux-android
+          cp native/target/aarch64-linux-android/release/libattak_tiltak.so \
+             addons/tiltak/bin/libattak_tiltak.android.arm64.so
+
+          cargo build --release --manifest-path native/Cargo.toml
+          cp native/target/release/libattak_tiltak.so \
+             addons/tiltak/bin/libattak_tiltak.linux.x86_64.so
+
+          test -s addons/tiltak/bin/libattak_tiltak.android.arm64.so
+          file addons/tiltak/bin/*.so
+
       # Run these with the editor binary, before exporting: GameState's asserts
       # are compiled out of release templates, so an illegal move would slip
       # through silently in an exported build.
@@ -64,7 +107,7 @@ jobs:
           export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           chmod +x "$GODOT"
           "$GODOT" --headless --import
-          for t in moveGenTest botTest botUiTest; do
+          for t in moveGenTest botTest botUiTest tiltakTest; do
             echo "== $t"
             "$GODOT" --headless "tools/$t.tscn" || exit 1
           done
@@ -73,10 +116,15 @@ jobs:
         run: |
           export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           chmod +x "$GODOT" tools/build-apk.sh
-          # Universal build, matching what upstream ships.
+          # Universal build, matching what upstream ships. Carries the tiltak
+          # library for arm64 only, so armv7 devices simply fall back to the
+          # built-in bot.
           PRESET="Android" tools/build-apk.sh "$PWD/build/android/Attak.apk"
-          # arm64-only, roughly half the size and easier to pull onto a phone.
-          PRESET="Android arm64" tools/build-apk.sh "$PWD/build/android/Attak_arm64.apk"
+          # arm64-only release build: roughly half the size, easiest to sideload.
+          PRESET="Android arm64" RELEASE=1 tools/build-apk.sh "$PWD/build/android/Attak_arm64.apk"
+          # A build with no GPL code in it at all, for redistribution -- see
+          # LICENSE-THIRD-PARTY.md.
+          SKIP_TILTAK=1 PRESET="Android arm64" RELEASE=1 tools/build-apk.sh "$PWD/build/android/Attak_arm64_no_tiltak.apk"
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4

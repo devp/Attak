@@ -27,6 +27,28 @@ simply go to [attak.club](attak.club)
 if you wish to host attak yourself, download `Attak_Web.zip`, unzip, and serve `Attak.html`,
 do note that some functionality may be limited if your domain does not have access to the playtak api
 
+## Playing offline against a bot
+
+The **Play → Vs Bot** tab starts a game against a bot with no account and no
+network connection. Pick a board size, your colour, and a difficulty.
+
+The first three difficulties run a small built-in GDScript opponent, which works
+on every platform including the web build. The two **Tiltak** difficulties run
+[tiltak](https://github.com/MortenLohne/tiltak) as a native extension — far
+stronger, but only on desktop and Android arm64, and only on 4x4, 5x5 and 6x6
+boards, which are the sizes tiltak implements. They are hidden automatically when
+unavailable.
+
+## Building
+
+`tools/build-apk.sh` produces a signed Android APK headlessly; see the comments at
+the top of the script for the toolchain it expects. `.github/workflows/android.yml`
+runs the same script in CI and uploads the APKs as artifacts.
+
+The Tiltak extension is GPL-3.0-or-later, which has consequences for
+redistribution — see [LICENSE-THIRD-PARTY.md](LICENSE-THIRD-PARTY.md). Build with
+`SKIP_TILTAK=1` for an APK containing no GPL code.
+
 ## Contributing
 Attak is an open source hobby project, if you want to help me out, let me know!
 

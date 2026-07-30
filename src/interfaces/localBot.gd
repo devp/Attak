@@ -16,7 +16,7 @@ enum DIFFICULTY {
 # board with tall stacks runs to thousands of plies, and each evaluation copies
 # the whole board via GameState.apply(). Sampling keeps a turn near-instant at
 # the cost of strength we do not have anyway.
-const MAX_CANDIDATES := 240
+const MAX_CANDIDATES := 120
 
 var difficulty: int = DIFFICULTY.CASUAL
 
@@ -110,7 +110,7 @@ func _terminalScore(win: int) -> float:
 	return WIN_SCORE if weWon else LOSS_SCORE
 
 
-const THREAT_SAMPLE := 60
+const THREAT_SAMPLE := 24
 
 
 func _opponentHasImmediateWin(after: GameState) -> bool:

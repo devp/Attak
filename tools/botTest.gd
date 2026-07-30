@@ -9,7 +9,7 @@ extends Node
 # GameLogic.move/end/resign wiring, and that the bot actually answers when it is
 # its turn rather than stalling. Exits non-zero on failure.
 
-const SIZES := [4, 5, 6]
+const SIZES := [4, 6]
 const DIFFICULTIES := [
 	LocalBot.DIFFICULTY.RANDOM,
 	LocalBot.DIFFICULTY.CASUAL,

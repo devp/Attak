@@ -57,6 +57,11 @@ static func appendPlacements(state: GameState, out: Array[Ply]) -> void:
 
 
 static func appendSpreads(state: GameState, out: Array[Ply]) -> void:
+	# No stack may be moved during the two swap-opening plies, even though a
+	# player's own flat is already on the board by ply 1. BoardLogic enforces the
+	# same thing by refusing pile selection while currentPly() < 2.
+	if state.ply < 2: return
+
 	var mover := moverColor(state)
 	for x in state.size:
 		for y in state.size:

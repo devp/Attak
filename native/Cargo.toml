@@ -1,0 +1,37 @@
+[package]
+name = "attak_tiltak"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "GDExtension exposing the tiltak Tak engine to Attak"
+license = "GPL-3.0-or-later"
+
+[lib]
+# The "lib" prefix in the resulting libattak_tiltak.so is required: Godot's
+# Android exporter rejects native libraries whose filename does not start with
+# it (see save_apk_so in platform/android/export/export_plugin.cpp).
+name = "attak_tiltak"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Pinned to Godot 4.4's API level to match the editor and export templates.
+godot = { version = "0.5", features = ["api-4-4"] }
+
+# tiltak is not published on crates.io, so this is a git dependency pinned to an
+# exact revision -- both for reproducible builds and because GPLv3 source
+# correspondence requires knowing precisely which source produced the binary.
+#
+# default-features = false drops tiltak's default "mimalloc" feature. Two reasons:
+# it would add a C build to the Android cross-compile, and installing a global
+# allocator from a shared library loaded into Godot is not ours to do.
+tiltak = { git = "https://github.com/MortenLohne/tiltak", rev = "fc4f52f0cb2213664ffd8f395493b86def93f21e", default-features = false }
+
+board-game-traits = "0.4"
+pgn-traits = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = true
+# Note: panic must stay "unwind". gdext catches panics at the FFI boundary and
+# reports them as Godot errors, which needs unwinding -- with panic="abort" an
+# unsupported board size would take the whole app down instead.

@@ -77,8 +77,11 @@ func onResign() -> void:
 		else GameState.DEFAULT_WIN_BLACK)
 
 
-func endGame(type: int) -> void:
-	if type == GameState.ONGOING and GameLogic.active: return
+func endGame(_type: int) -> void:
+	# Always let go, whatever the reason. GameLogic.doSetup emits end(ONGOING) to
+	# abandon a game in progress, which is exactly when a previous bot must
+	# disconnect -- otherwise it stays subscribed to GameLogic.move and answers
+	# alongside the new one.
 	thinking = false
 	_disconnectSignals()
 

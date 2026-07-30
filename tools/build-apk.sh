@@ -18,6 +18,9 @@
 #   RELEASE        set to 1 to export release instead of debug. Release builds are
 #                  ~10% smaller, but strip asserts -- prefer debug while testing
 #                  game logic, since src/Logic/gameState.gd relies on assertions.
+#   SKIP_TILTAK    set to 1 to build without the tiltak GDExtension, for when the
+#                  Android NDK isn't available to cross-compile it. The result
+#                  plays fine, just without the Tiltak difficulties.
 
 set -euo pipefail
 
@@ -113,6 +116,35 @@ else
 fi
 
 cd "$PROJECT_ROOT"
+
+# The tiltak GDExtension declares an android.arm64 library. If that .so is
+# missing, Godot does NOT fail the export -- it packages a 0-byte file, which then
+# fails to dlopen on the device and logs errors on every launch. Refuse to build
+# that, and offer an explicit way to opt out instead.
+GDEXTENSION="addons/tiltak/tiltak.gdextension"
+ANDROID_LIB="addons/tiltak/bin/libattak_tiltak.android.arm64.so"
+
+restore_gdextension() {
+	if [ -f "$GDEXTENSION.disabled" ]; then
+		mv "$GDEXTENSION.disabled" "$GDEXTENSION"
+	fi
+}
+trap restore_gdextension EXIT
+
+if [ -f "$GDEXTENSION" ]; then
+	if [ "${SKIP_TILTAK:-0}" = 1 ]; then
+		echo "==> building without tiltak (SKIP_TILTAK=1)"
+		mv "$GDEXTENSION" "$GDEXTENSION.disabled"
+	elif [ ! -s "$ANDROID_LIB" ]; then
+		die "$ANDROID_LIB is missing or empty.
+  Cross-compile it first:
+    rustup target add aarch64-linux-android
+    export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=\$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang
+    cargo build --release --manifest-path native/Cargo.toml --target aarch64-linux-android
+    cp native/target/aarch64-linux-android/release/libattak_tiltak.so $ANDROID_LIB
+  Or build without it:  SKIP_TILTAK=1 $0"
+	fi
+fi
 
 # Generate .godot/ import caches. The export fails without them, and a fresh
 # clone (or CI checkout) has none because .godot/ is gitignored.
