@@ -50,6 +50,18 @@ template=$([ "$RELEASE" = 1 ] && echo android_release.apk || echo android_debug.
 	"missing $templates_dir/$template -- install the export templates for $GODOT_VERSION"
 
 [ -d "$ANDROID_HOME/build-tools" ] || die "no build-tools under $ANDROID_HOME (need apksigner)"
+
+# Resolve exactly one apksigner. An SDK can have several build-tools versions
+# installed (GitHub runners ship 34 and 35), so a bare build-tools/*/apksigner
+# glob turns the extra matches into arguments and apksigner rejects the command.
+APKSIGNER=""
+for candidate in $(ls -d "$ANDROID_HOME"/build-tools/*/ 2>/dev/null | sort -Vr); do
+	if [ -x "${candidate}apksigner" ]; then
+		APKSIGNER="${candidate}apksigner"
+		break
+	fi
+done
+[ -n "$APKSIGNER" ] || die "no apksigner found under $ANDROID_HOME/build-tools"
 [ -d "$ANDROID_HOME/platform-tools" ] || die "no platform-tools under $ANDROID_HOME (Godot validates adb is present)"
 
 java_home="${JAVA_HOME:-}"
@@ -160,9 +172,8 @@ echo "==> exporting $OUTPUT  (preset: $PRESET, $mode)"
 
 [ -f "$OUTPUT" ] || die "export reported success but produced no APK"
 
-echo "==> verifying"
-"$ANDROID_HOME"/build-tools/*/apksigner verify "$OUTPUT" \
-	|| die "apksigner could not verify the output"
+echo "==> verifying with $APKSIGNER"
+"$APKSIGNER" verify "$OUTPUT" || die "apksigner could not verify the output"
 
 # Godot leaves a v4 signature sidecar behind; it isn't needed to install.
 rm -f "$OUTPUT.idsig"

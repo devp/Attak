@@ -119,15 +119,16 @@ jobs:
         run: |
           export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           chmod +x "$GODOT" tools/build-apk.sh
-          # Universal build, matching what upstream ships. Carries the tiltak
-          # library for arm64 only, so armv7 devices simply fall back to the
-          # built-in bot.
-          PRESET="Android" tools/build-apk.sh "$PWD/build/android/Attak.apk"
-          # arm64-only release build: roughly half the size, easiest to sideload.
-          PRESET="Android arm64" RELEASE=1 tools/build-apk.sh "$PWD/build/android/Attak_arm64.apk"
-          # A build with no GPL code in it at all, for redistribution -- see
-          # LICENSE-THIRD-PARTY.md.
-          SKIP_TILTAK=1 PRESET="Android arm64" RELEASE=1 tools/build-apk.sh "$PWD/build/android/Attak_arm64_no_tiltak.apk"
+          # The one to sideload: arm64 with the tiltak engine, release-sized.
+          PRESET="Android arm64" RELEASE=1 \
+            tools/build-apk.sh "$PWD/build/android/Attak_arm64_tiltak.apk"
+
+          # Broad-compatibility build: both ABIs, and no GPL code at all (see
+          # LICENSE-THIRD-PARTY.md). Built without tiltak deliberately -- the
+          # extension is arm64-only, so including it here would leave 32-bit
+          # devices with a library they cannot load.
+          SKIP_TILTAK=1 PRESET="Android" RELEASE=1 \
+            tools/build-apk.sh "$PWD/build/android/Attak_universal.apk"
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
