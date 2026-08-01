@@ -83,7 +83,12 @@ jobs:
       #
       # The NDK's clang serves twice over: as cargo's linker, and -- via
       # native/build.rs, which reads the same variable -- as the C compiler cgo
-      # cross-compiles the Go archive with.
+      # cross-compiles the Go half with.
+      #
+      # Android produces two libraries, not one. Go cannot build a c-archive for
+      # android, so the engine is a separate libtaktician.so there rather than
+      # statically linked in; TAKTICIAN_SO_DIR is where build.rs puts it, and the
+      # .gdextension declares it as a dependency so Godot packages it.
       - name: Build Taktician GDExtension
         run: |
           set -eux
@@ -99,7 +104,8 @@ jobs:
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$linker"
 
           mkdir -p addons/taktician/bin
-          cargo build --release --manifest-path native/Cargo.toml --target aarch64-linux-android
+          TAKTICIAN_SO_DIR="$PWD/addons/taktician/bin" \
+            cargo build --release --manifest-path native/Cargo.toml --target aarch64-linux-android
           cp native/target/aarch64-linux-android/release/libattak_taktician.so \
              addons/taktician/bin/libattak_taktician.android.arm64.so
 
@@ -108,6 +114,15 @@ jobs:
              addons/taktician/bin/libattak_taktician.linux.x86_64.so
 
           test -s addons/taktician/bin/libattak_taktician.android.arm64.so
+          test -s addons/taktician/bin/libtaktician.so
+
+          # The extension must ask for the engine under the exact name Godot will
+          # package it as. Getting this wrong produces two perfectly good
+          # libraries that cannot find each other on the device -- which shows up
+          # only as the Taktician options silently vanishing from the dropdown.
+          readelf -d addons/taktician/bin/libattak_taktician.android.arm64.so \
+            | grep -q 'NEEDED.*\[libtaktician\.so\]'
+
           file addons/taktician/bin/*.so
 
       # Run these with the editor binary, before exporting: GameState's asserts

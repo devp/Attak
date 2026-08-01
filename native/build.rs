@@ -1,8 +1,19 @@
-//! Builds native/go into a c-archive and links it into this crate.
+//! Builds native/go and links it into this crate.
 //!
 //! Doing it here rather than as a separate step in tools/build-apk.sh means a
 //! plain `cargo build` produces a working extension, and that the Go and Rust
 //! halves can never drift out of step in a checkout.
+//!
+//! The build mode differs by target, and not by choice. Go supports
+//! `-buildmode=c-archive` on linux (arm64 included), darwin, ios, aix and
+//! windows, but *not* on android -- see `c-archive` in Go's
+//! internal/platform/supported.go, which omits it. Android gets `c-shared`
+//! instead, which is the mode gomobile uses, and the resulting libtaktician.so
+//! ships next to the extension as a GDExtension dependency. So:
+//!
+//!   desktop  static libtaktician.a linked in; one file to deploy
+//!   android  shared libtaktician.so alongside; two files, both landing in the
+//!            APK's lib/<abi>/ where the dynamic linker finds them
 //!
 //! Cross-compiling for Android needs the NDK's clang as the C compiler for cgo.
 //! The CI workflow already exports CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER
@@ -13,33 +24,75 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// The Android shared library's filename, which is load-bearing in two places at
+/// once: the extension records it as its DT_NEEDED at link time, and Godot's
+/// save_apk_so packages a dependency under its own basename. Those must agree, so
+/// it cannot take the repo's usual `.android.arm64.so` suffix. Godot also refuses
+/// any Android library whose name does not start with "lib".
+const ANDROID_SO: &str = "libtaktician.so";
+
 fn main() {
     let go_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("go");
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let archive = out_dir.join("libtaktician.a");
 
     for file in ["engine.go", "go.mod", "go.sum"] {
         println!("cargo:rerun-if-changed={}", go_dir.join(file).display());
     }
     println!("cargo:rerun-if-env-changed=GO");
+    println!("cargo:rerun-if-env-changed=TAKTICIAN_SO_DIR");
     println!("cargo:rerun-if-env-changed=CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER");
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    let android = target_os == "android";
+
+    // On Android the caller needs to collect the shared library afterwards, and
+    // OUT_DIR carries a build hash it cannot predict. TAKTICIAN_SO_DIR lets it say
+    // where the file should land instead of globbing for it.
+    let so_dir = match env::var("TAKTICIAN_SO_DIR") {
+        Ok(dir) if android => {
+            let dir = PathBuf::from(dir);
+            // A relative path would resolve against the build script's working
+            // directory -- the package root, not where cargo was invoked -- which
+            // is a trap worth refusing outright rather than documenting.
+            assert!(
+                dir.is_absolute(),
+                "TAKTICIAN_SO_DIR must be an absolute path, got {dir:?}"
+            );
+            std::fs::create_dir_all(&dir)
+                .unwrap_or_else(|e| panic!("could not create TAKTICIAN_SO_DIR {dir:?}: {e}"));
+            dir
+        }
+        _ => out_dir.clone(),
+    };
+
+    let output = if android {
+        so_dir.join(ANDROID_SO)
+    } else {
+        out_dir.join("libtaktician.a")
+    };
 
     let mut go = Command::new(env::var("GO").unwrap_or_else(|_| "go".into()));
     go.current_dir(&go_dir)
         .arg("build")
-        .arg("-buildmode=c-archive")
+        .arg(if android {
+            "-buildmode=c-shared"
+        } else {
+            "-buildmode=c-archive"
+        })
         .arg("-trimpath")
         .arg("-o")
-        .arg(&archive)
-        .arg(".")
+        .arg(&output)
         .env("GOOS", goos(&target_os))
         .env("GOARCH", goarch(&target_arch))
         .env("CGO_ENABLED", "1");
 
-    if target_os == "android" {
+    if android {
+        // Pin the soname rather than letting it default to the output path, so
+        // what the extension links against is what Godot packages, whatever
+        // directory the build wrote to.
+        go.arg(format!("-ldflags=-extldflags=-Wl,-soname,{ANDROID_SO}"));
+
         // cgo needs a compiler that targets the device, not the host. Without
         // this the build silently uses the host cc and fails at link time with
         // architecture mismatches that say nothing about the real cause.
@@ -53,6 +106,8 @@ fn main() {
         go.env("CC", &cc);
     }
 
+    go.arg(".");
+
     let status = go
         .status()
         .unwrap_or_else(|e| panic!("could not run go -- is it installed and on PATH? ({e})"));
@@ -61,22 +116,18 @@ fn main() {
         "go build failed for {target_os}/{target_arch}"
     );
 
-    println!("cargo:rustc-link-search=native={}", out_dir.display());
-    println!("cargo:rustc-link-lib=static=taktician");
+    println!("cargo:rustc-link-search=native={}", so_dir.display());
 
-    // What the Go runtime itself needs from the platform.
-    match target_os.as_str() {
-        // Bionic folds pthread into libc, but keeps libdl and libm separate, and
-        // runtime/cgo logs through liblog on Android.
-        "android" => {
-            for lib in ["dl", "m", "log"] {
-                println!("cargo:rustc-link-lib=dylib={lib}");
-            }
-        }
-        _ => {
-            for lib in ["pthread", "dl", "m"] {
-                println!("cargo:rustc-link-lib=dylib={lib}");
-            }
+    if android {
+        // Dynamic: the Go runtime lives in libtaktician.so, which carries its own
+        // platform links, so there is nothing further for this crate to name.
+        println!("cargo:rustc-link-lib=dylib=taktician");
+    } else {
+        println!("cargo:rustc-link-lib=static=taktician");
+        // Statically linked in, so the Go runtime's platform dependencies become
+        // this crate's to declare.
+        for lib in ["pthread", "dl", "m"] {
+            println!("cargo:rustc-link-lib=dylib={lib}");
         }
     }
 }

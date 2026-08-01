@@ -129,12 +129,13 @@ fi
 
 cd "$PROJECT_ROOT"
 
-# The Taktician GDExtension declares an android.arm64 library. If that .so is
-# missing, Godot does NOT fail the export -- it packages a 0-byte file, which then
-# fails to dlopen on the device and logs errors on every launch. Refuse to build
-# that, and offer an explicit way to opt out instead.
+# The Taktician GDExtension declares an android.arm64 library plus the Go engine
+# it links against. If either .so is missing, Godot does NOT fail the export -- it
+# packages a 0-byte file, which then fails to dlopen on the device and logs errors
+# on every launch. Refuse to build that, and offer an explicit way to opt out.
 GDEXTENSION="addons/taktician/taktician.gdextension"
 ANDROID_LIB="addons/taktician/bin/libattak_taktician.android.arm64.so"
+ANDROID_ENGINE_LIB="addons/taktician/bin/libtaktician.so"
 
 restore_gdextension() {
 	if [ -f "$GDEXTENSION.disabled" ]; then
@@ -152,15 +153,19 @@ if [ -f "$GDEXTENSION" ]; then
 	if [ "${SKIP_TAKTICIAN:-0}" = 1 ]; then
 		echo "==> building without Taktician (SKIP_TAKTICIAN=1)"
 		mv "$GDEXTENSION" "$GDEXTENSION.disabled"
-	elif [ ! -s "$ANDROID_LIB" ]; then
+	elif [ ! -s "$ANDROID_LIB" ] || [ ! -s "$ANDROID_ENGINE_LIB" ]; then
 		# Both toolchains are needed: cargo builds the GDExtension shim, and its
 		# build.rs compiles native/go through the NDK's clang. The one linker
 		# variable below serves both -- build.rs reads it to find that clang.
-		die "$ANDROID_LIB is missing or empty.
-  Cross-compile it first (needs Go and the Android NDK):
+		#
+		# Two libraries come out, because Go cannot build a c-archive for android.
+		# TAKTICIAN_SO_DIR is where build.rs drops the engine; it must be absolute.
+		die "$ANDROID_LIB or $ANDROID_ENGINE_LIB is missing or empty.
+  Cross-compile them first (needs Go and the Android NDK):
     rustup target add aarch64-linux-android
     export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=\$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang
-    cargo build --release --manifest-path native/Cargo.toml --target aarch64-linux-android
+    TAKTICIAN_SO_DIR=\"\$PWD/addons/taktician/bin\" \\
+      cargo build --release --manifest-path native/Cargo.toml --target aarch64-linux-android
     cp native/target/aarch64-linux-android/release/libattak_taktician.so $ANDROID_LIB
   Or build without it:  SKIP_TAKTICIAN=1 $0"
 	fi
@@ -186,14 +191,20 @@ echo "==> verifying with $APKSIGNER"
 # Confirm the native engine really landed in the package. Godot only warns when a
 # GDExtension library is missing for an architecture, so without this an APK that
 # silently lost the engine would still look like a clean build.
+#
+# Both libraries have to be there: the extension itself, and the Go engine it is
+# dynamically linked against. Either one missing fails the same silent way on the
+# device -- the Taktician options are simply absent from the dropdown.
 if [ -f "$GDEXTENSION" ]; then
-	entry=$(unzip -l "$OUTPUT" | awk '/libattak_taktician/ {print $1; exit}')
-	if [ -z "$entry" ]; then
-		die "the Taktician extension is enabled but no libattak_taktician was packaged into $OUTPUT"
-	elif [ "$entry" = "0" ]; then
-		die "libattak_taktician was packaged into $OUTPUT as a 0-byte file; it would fail to load on device"
-	fi
-	echo "    Taktician engine packaged: $entry bytes"
+	for lib in libattak_taktician libtaktician.so; do
+		entry=$(unzip -l "$OUTPUT" | awk -v lib="$lib" 'index($NF, lib) && $NF ~ /^lib\// {print $1; exit}')
+		if [ -z "$entry" ]; then
+			die "the Taktician extension is enabled but no $lib was packaged into $OUTPUT"
+		elif [ "$entry" = "0" ]; then
+			die "$lib was packaged into $OUTPUT as a 0-byte file; it would fail to load on device"
+		fi
+		echo "    packaged $lib: $entry bytes"
+	done
 fi
 
 # Godot leaves a v4 signature sidecar behind; it isn't needed to install.

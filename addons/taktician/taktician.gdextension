@@ -16,3 +16,22 @@ linux.debug.x86_64 = "res://addons/taktician/bin/libattak_taktician.linux.x86_64
 linux.release.x86_64 = "res://addons/taktician/bin/libattak_taktician.linux.x86_64.so"
 android.debug.arm64 = "res://addons/taktician/bin/libattak_taktician.android.arm64.so"
 android.release.arm64 = "res://addons/taktician/bin/libattak_taktician.android.arm64.so"
+
+[dependencies]
+
+; The Go half of the engine. Only Android needs this entry: Go cannot build a
+; c-archive for android (see native/build.rs), so there the engine is a second
+; shared library rather than statically linked in, and Godot has to be told to
+; package it.
+;
+; Godot tags a dependency with the dot-separated parts of its key and matches
+; those against the ABI list, so "arm64" here is what lands the file in the APK's
+; lib/arm64-v8a/ -- next to the extension, where the dynamic linker resolves it
+; with no rpath needed.
+;
+; The filename must stay exactly libtaktician.so: Godot packages a dependency
+; under its own basename, and that is the DT_NEEDED the extension was linked
+; with. Only one of these two keys is ever matched, since debug and release are
+; mutually exclusive features.
+android.debug.arm64 = { "res://addons/taktician/bin/libtaktician.so" : "" }
+android.release.arm64 = { "res://addons/taktician/bin/libtaktician.so" : "" }
