@@ -37,7 +37,7 @@ func _ready() -> void:
 			_fail("pressing the Bot tab did not show the Bot panel")
 
 		await _startGameAndCheckReply(panel)
-		await _checkTiltakOption(panel)
+		await _checkSyntaksOption(panel)
 
 	print("")
 	if failures.is_empty():
@@ -64,7 +64,7 @@ func _startGameAndCheckReply(panel: Node) -> void:
 	# Play as Black so the bot has to open, which exercises the "bot moves first"
 	# branch of startGame.
 	panel.colorEntry.select(1)
-	panel.sizeEntry.select(2)   # 5x5
+	panel.sizeEntry.select(3)   # 6x6, the only size syntaks plays
 	panel.diffEntry.select(1)   # Novice
 
 	panel.start()
@@ -73,8 +73,8 @@ func _startGameAndCheckReply(panel: Node) -> void:
 	if not GameLogic.active:
 		_fail("no game is active after pressing Start Game")
 		return
-	if GameLogic.gameData.size != 5:
-		_fail("expected a 5x5 game, got %dx%d" % [GameLogic.gameData.size, GameLogic.gameData.size])
+	if GameLogic.gameData.size != 6:
+		_fail("expected a 6x6 game, got %dx%d" % [GameLogic.gameData.size, GameLogic.gameData.size])
 	if GameLogic.gameData.playerWhite != GameData.BOT:
 		_fail("expected the bot to be White, got playerWhite=%d" % GameLogic.gameData.playerWhite)
 	if GameLogic.gameData.playerBlack != GameData.LOCAL:
@@ -98,48 +98,48 @@ func _startGameAndCheckReply(panel: Node) -> void:
 		_fail("bot did not answer our move")
 
 
-# The tiltak difficulties are only meaningful when the GDExtension is present.
+# The syntaks difficulties are only meaningful when the GDExtension is present.
 # When it is, playing through the tab is the end-to-end check that the native
 # engine actually answers; when it isn't, the options must be gone rather than
 # offered and broken.
-func _checkTiltakOption(panel: Node) -> void:
-	var available: bool = TiltakBot.available()
-	var idx: int = panel.diffEntry.get_item_index(BotMenu.DIFFICULTY.TILTAK_FAST)
+func _checkSyntaksOption(panel: Node) -> void:
+	var available: bool = SyntaksBot.available()
+	var idx: int = panel.diffEntry.get_item_index(BotMenu.DIFFICULTY.SYNTAKS_FAST)
 
 	if not available:
 		if idx != -1:
-			_fail("tiltak is unavailable but the Tiltak difficulty is still offered")
+			_fail("syntaks is unavailable but the Syntaks difficulty is still offered")
 		else:
-			print("note: TiltakEngine not built for this platform, tiltak path skipped")
+			print("note: SyntaksEngine not built for this platform, syntaks path skipped")
 		return
 
 	if idx == -1:
-		_fail("tiltak is available but the Tiltak difficulty is missing from the dropdown")
+		_fail("syntaks is available but the Syntaks difficulty is missing from the dropdown")
 		return
 
-	# 5x5 is inside tiltak's supported set, so this must actually use the engine.
+	# 6x6 is the only size syntaks plays, so this must actually use the engine.
 	panel.diffEntry.select(idx)
-	panel.sizeEntry.select(2)
+	panel.sizeEntry.select(3)   # 6x6
 	panel.colorEntry.select(1)   # bot opens as White
 
 	panel.start()
 	await get_tree().process_frame
 
-	if panel.tiltakBot == null:
-		_fail("no TiltakBot was created despite the engine being available")
+	if panel.syntaksBot == null:
+		_fail("no SyntaksBot was created despite the engine being available")
 		return
-	panel.tiltakBot.thinkDelay = 0.0
+	panel.syntaksBot.thinkDelay = 0.0
 
-	if GameLogic.gameData.playerWhiteName.find("Tiltak") == -1:
-		_fail("expected tiltak to be named as White, got '%s'" % GameLogic.gameData.playerWhiteName)
+	if GameLogic.gameData.playerWhiteName.find("Syntaks") == -1:
+		_fail("expected syntaks to be named as White, got '%s'" % GameLogic.gameData.playerWhiteName)
 
 	if not await _waitForHistory(1):
-		_fail("tiltak never played its opening move")
+		_fail("syntaks never played its opening move")
 		return
 
 	var opening: Ply = GameLogic.history[0]
 	if opening == null:
-		_fail("tiltak's opening move did not land in the history")
+		_fail("syntaks's opening move did not land in the history")
 
 
 func _waitForHistory(target: int) -> bool:

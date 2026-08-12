@@ -1,27 +1,25 @@
 extends BotInterface
-class_name TiltakBot
+class_name SyntaksBot
 
-# Bot backed by the tiltak engine, via the GDExtension in addons/tiltak.
+# Bot backed by the syntaks engine, via the GDExtension in addons/syntaks.
 #
-# tiltak is GPL-3.0-or-later, so it is deliberately confined to this file and the
-# native crate: LocalBot remains the default, licence-clean opponent, and builds
-# without the extension lose nothing but strength. See LICENSE-THIRD-PARTY.md.
+# syntaks is MIT licensed, so unlike the GPL engine this replaces it puts no
+# conditions on how Attak itself is licensed or distributed. See
+# LICENSE-THIRD-PARTY.md.
 #
 # The engine class is only ever reached through ClassDB, never named as a type.
 # Naming a GDExtension class statically makes the *script* fail to parse wherever
 # the extension is absent -- the Web export, or any architecture we did not build
 # the library for -- which would take the whole Bot tab down with it.
 
-const ENGINE_CLASS := "TiltakEngine"
+const ENGINE_CLASS := "SyntaksEngine"
 
-# Rough budgets. tiltak is far stronger than anything here needs, so the low end
-# is a deliberately small node count rather than a short clock.
 enum STRENGTH {
-	FAST,    # fixed node budget: quick, reproducible, still well beyond LocalBot
+	FAST,    # fixed node budget: quick and reproducible
 	STRONG,  # time budget: scales with whatever device this is running on
 }
 
-const FAST_NODES := 4000
+const FAST_NODES := 40000
 const STRONG_MILLIS := 3000
 
 # A search should never outlast this. If it does, something is wrong in the
@@ -40,29 +38,39 @@ static func available() -> bool:
 
 func _init() -> void:
 	_rng.randomize()
-	botName = "Tiltak"
+	botName = "Syntaks"
+
+
+func _engineInstance():
+	if not available(): return null
+	if _engine == null:
+		_engine = ClassDB.instantiate(ENGINE_CLASS)
+	return _engine
 
 
 # Returns false when the engine cannot take this game, so the caller can fall
-# back to LocalBot instead. tiltak only implements 4x4, 5x5 and 6x6.
+# back to LocalBot instead. syntaks plays 6x6 at one fixed komi and nothing else.
 func newGame(size: int, halfKomi: int) -> bool:
-	if not available(): return false
-	if _engine == null:
-		_engine = ClassDB.instantiate(ENGINE_CLASS)
-	if _engine == null: return false
-	return _engine.new_game(size, halfKomi)
+	var engine = _engineInstance()
+	if engine == null: return false
+	return engine.new_game(size, halfKomi)
 
 
 func setStrength(s: int) -> void:
 	strength = s
-	botName = "Tiltak" if s == STRENGTH.FAST else "Tiltak (strong)"
+	botName = "Syntaks" if s == STRENGTH.FAST else "Syntaks (strong)"
 
 
 func supportsSize(size: int) -> bool:
-	if not available(): return false
-	if _engine == null:
-		_engine = ClassDB.instantiate(ENGINE_CLASS)
-	return _engine != null and _engine.supports_size(size)
+	var engine = _engineInstance()
+	return engine != null and engine.supports_size(size)
+
+
+# The komi a game has to use for this engine to be worth asking. Read from the
+# engine rather than hard-coded here so the two cannot drift apart.
+func requiredHalfKomi() -> int:
+	var engine = _engineInstance()
+	return engine.required_half_komi() if engine != null else 0
 
 
 func _chooseMove(state: GameState) -> Ply:
@@ -73,7 +81,7 @@ func _chooseMove(state: GameState) -> Ply:
 	var millis: int = 0 if strength == STRENGTH.FAST else STRONG_MILLIS
 
 	if not _engine.start_search(state.getTPS(), nodes, millis):
-		push_warning("tiltak refused the position, falling back to the built-in bot")
+		push_warning("syntaks refused the position, falling back to the built-in bot")
 		return await _fallback(state)
 
 	# The search runs on its own thread inside the extension; poll it from here so
@@ -84,12 +92,12 @@ func _chooseMove(state: GameState) -> Ply:
 
 	var ptn: String = _engine.take_result()
 	if ptn.is_empty():
-		push_warning("tiltak returned no move, falling back to the built-in bot")
+		push_warning("syntaks returned no move, falling back to the built-in bot")
 		return await _fallback(state)
 
 	var ply := Ply.fromPTN(ptn)
 	if ply == null:
-		push_warning("could not parse tiltak's move '%s', falling back" % ptn)
+		push_warning("could not parse syntaks' move '%s', falling back" % ptn)
 		return await _fallback(state)
 
 	return ply

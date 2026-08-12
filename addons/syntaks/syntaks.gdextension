@@ -12,7 +12,7 @@ reloadable = false
 ; Only arm64 is provided for Android on purpose: the Android arm64 preset drops
 ; armeabi-v7a, since a 32-bit device would otherwise get Godot's armv7 template
 ; libs with no matching extension library and fail to load it.
-linux.debug.x86_64 = "res://addons/tiltak/bin/libattak_tiltak.linux.x86_64.so"
-linux.release.x86_64 = "res://addons/tiltak/bin/libattak_tiltak.linux.x86_64.so"
-android.debug.arm64 = "res://addons/tiltak/bin/libattak_tiltak.android.arm64.so"
-android.release.arm64 = "res://addons/tiltak/bin/libattak_tiltak.android.arm64.so"
+linux.debug.x86_64 = "res://addons/syntaks/bin/libattak_syntaks.linux.x86_64.so"
+linux.release.x86_64 = "res://addons/syntaks/bin/libattak_syntaks.linux.x86_64.so"
+android.debug.arm64 = "res://addons/syntaks/bin/libattak_syntaks.android.arm64.so"
+android.release.arm64 = "res://addons/syntaks/bin/libattak_syntaks.android.arm64.so"

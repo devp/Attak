@@ -1,42 +1,35 @@
 # Third-party components
 
-## tiltak — GPL-3.0-or-later
+## syntaks — MIT
 
-Builds that include the `addons/tiltak` GDExtension link against
-[tiltak](https://github.com/MortenLohne/tiltak), a Tak engine by Morten Lohne,
-licensed **GPL-3.0-or-later**. The exact revision is pinned in
-`native/Cargo.toml`.
+The `addons/syntaks` GDExtension links against
+[syntaks](https://github.com/Ciekce/syntaks), a TEI Tak engine by Ciekce,
+licensed **MIT**.
 
-The glue code in `native/src/lib.rs` and `src/interfaces/tiltakBot.gd` exists only
-to drive that engine, and is offered under the same terms.
+MIT asks only that the copyright notice and permission notice travel with the
+software. It places **no conditions on how Attak itself is licensed or
+distributed**, so bundling the engine in a public release is unproblematic.
 
-### What this means in practice
+### Why this depends on a fork
 
-GPLv3 obligations attach to **distribution**, not to use. Building this yourself
-and installing it on your own device triggers nothing.
+`native/Cargo.toml` points at [devp/syntaks](https://github.com/devp/syntaks),
+branch `portable-road-and-lib-target`, pinned to an exact revision. Upstream
+cannot be embedded as it stands, for three reasons:
 
-If you distribute a build that bundles the tiltak library, then that build is a
-combined work covered by the GPLv3, and you must offer its complete corresponding
-source — including Attak's own source — under GPLv3-compatible terms.
+1. **It does not run on ARM.** `has_road` — road detection, and so the primary
+   win condition — dispatched to AVX2 or SSE4.2 and fell through to `todo!()` on
+   anything else, which panics. That covers all of aarch64. The fork adds a
+   portable implementation and pins it to the SIMD ones with a differential test.
+2. **It could not be linked.** syntaks was a binary-only crate with every module
+   private, usable only as a subprocess over TEI — which is exactly what Android
+   forbids. The fork adds a library target.
+3. **The result could only be printed.** The search reported its move by writing
+   `bestmove` to stdout, with nothing recording it. An embedding host has no pipe
+   to read. The fork stores the move and adds an accessor.
 
-**Attak has no licence of its own.** Without one, all rights are reserved by the
-upstream author, and a GPLv3-compatible combined work cannot be formed. So a
-public release bundling tiltak is not something a contributor can decide to
-make; it needs a licensing decision from the project owner first.
-
-### Building without it
-
-tiltak is deliberately optional and isolated. `LocalBot`
-(`src/interfaces/localBot.gd`) is the default opponent, is pure GDScript, and
-carries no third-party code. To produce a build with no GPL code in it at all:
-
-```sh
-SKIP_TILTAK=1 tools/build-apk.sh
-```
-
-The result plays exactly the same, minus the Tiltak difficulty options. Nothing
-in Attak's own sources depends on the extension — `TiltakBot` reaches the engine
-only through `ClassDB`, so the scripts do not even reference it by name.
+All three are small, upstreamable changes that leave the engine's behaviour as a
+binary untouched. If they land upstream, the dependency can point back at
+`Ciekce/syntaks` with no other change.
 
 ## godot-rust (`godot` crate) — MPL-2.0
 
@@ -45,6 +38,28 @@ licensed MPL-2.0. Used unmodified as a Cargo dependency.
 
 ## Other Rust dependencies
 
-`native/Cargo.lock` pins the full transitive set. `board-game-traits` and
-`pgn-traits` (also by Morten Lohne) are MIT/Apache-2.0; the remainder are the
-usual permissively licensed Rust ecosystem crates.
+`native/Cargo.lock` pins the full transitive set — permissively licensed Rust
+ecosystem crates throughout.
+
+## Building without the engine
+
+The engine remains optional. `LocalBot` (`src/interfaces/localBot.gd`) is pure
+GDScript, is the default opponent, and covers every board size and platform
+including the Web export. To build without the extension:
+
+```sh
+SKIP_SYNTAKS=1 tools/build-apk.sh
+```
+
+Nothing in Attak's own sources depends on it — `SyntaksBot` reaches the engine
+only through `ClassDB`, so the scripts do not even name it.
+
+## Note on the previous engine
+
+Earlier revisions of this branch used [tiltak](https://github.com/MortenLohne/tiltak),
+which is GPL-3.0-or-later. That imposed real conditions on redistributing Attak,
+and since Attak has no licence of its own those conditions could not be satisfied
+without a decision from the project owner. Moving to an MIT-licensed engine
+removes the question entirely. tiltak is the stronger engine and covers 4x4, 5x5
+and 6x6 where syntaks covers only 6x6, so this trades capability for the freedom
+to ship.

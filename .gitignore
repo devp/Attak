@@ -9,4 +9,4 @@ android/
 # Native GDExtension build artifacts
 native/target/
 # Compiled extension libraries -- built by tools/build-apk.sh or CI, not committed
-addons/tiltak/bin/
+addons/syntaks/bin/

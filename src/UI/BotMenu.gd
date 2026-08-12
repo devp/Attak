@@ -12,16 +12,16 @@ class_name BotMenu
 # works with no account and no network.
 
 # Difficulty option ids. The first three run the built-in GDScript bot; the last
-# two need the tiltak GDExtension and are hidden when it is unavailable.
+# two need the syntaks GDExtension and are hidden when it is unavailable.
 enum DIFFICULTY {
 	RANDOM = 0,
 	NOVICE = 1,
 	CAREFUL = 2,
-	TILTAK_FAST = 3,
-	TILTAK_STRONG = 4,
+	SYNTAKS_FAST = 3,
+	SYNTAKS_STRONG = 4,
 }
 
-const TILTAK_IDS := [DIFFICULTY.TILTAK_FAST, DIFFICULTY.TILTAK_STRONG]
+const SYNTAKS_IDS := [DIFFICULTY.SYNTAKS_FAST, DIFFICULTY.SYNTAKS_STRONG]
 
 @onready var colorEntry: OptionButton = $GridContainer/Color2
 @onready var sizeEntry: OptionButton = $GridContainer/Size2
@@ -29,19 +29,24 @@ const TILTAK_IDS := [DIFFICULTY.TILTAK_FAST, DIFFICULTY.TILTAK_STRONG]
 
 @onready var localBot: LocalBot = $Bot
 
-var tiltakBot: TiltakBot = null
+var syntaksBot: SyntaksBot = null
+
+# Komi for the game about to start, as half-komi. Only the native engine cares:
+# it is built around one fixed komi, and a game using any other one would be
+# evaluated against the wrong target.
+var _halfKomi: int = 0
 
 
 func _ready() -> void:
 	$Button.pressed.connect(start)
 
-	if TiltakBot.available():
-		tiltakBot = TiltakBot.new()
-		add_child(tiltakBot)
+	if SyntaksBot.available():
+		syntaksBot = SyntaksBot.new()
+		add_child(syntaksBot)
 	else:
 		# No native engine on this platform (the Web export has no GDExtension at
 		# all). Drop the options rather than offering something that cannot run.
-		for id in TILTAK_IDS:
+		for id in SYNTAKS_IDS:
 			var idx := diffEntry.get_item_index(id)
 			if idx != -1: diffEntry.remove_item(idx)
 
@@ -60,7 +65,7 @@ func start() -> void:
 	var size: int = sizeEntry.get_selected_id()
 	var iAmWhite: bool = colorEntry.get_selected_id() == GameState.WHITE
 
-	var bot: BotInterface = _pickBot(sizeEntry.get_selected_id(), diffEntry.get_selected_id())
+	var bot: BotInterface = _pickBot(size, diffEntry.get_selected_id())
 
 	var game := GameData.new(
 		"", size,
@@ -68,7 +73,7 @@ func start() -> void:
 		GameData.BOT if iAmWhite else GameData.LOCAL,
 		playerName if iAmWhite else bot.botName,
 		bot.botName if iAmWhite else playerName,
-		0, 0, 0, 0, 0,  # untimed, no increment, no komi
+		0, 0, 0, 0, _halfKomi,  # untimed, no increment
 		NewSeek.standardFlats[size - 3], NewSeek.standardCaps[size - 3],
 		SeekData.UNRATED
 	)
@@ -76,15 +81,21 @@ func start() -> void:
 	bot.startGame(game)
 
 
-# Chooses the engine, falling back to the built-in bot whenever tiltak cannot
-# take the game -- it only implements 4x4, 5x5 and 6x6, while Attak offers 3-8.
+# Chooses the engine, falling back to the built-in bot whenever syntaks cannot
+# take the game -- it plays 6x6 at one fixed komi, while Attak offers 3-8.
 func _pickBot(size: int, difficulty: int) -> BotInterface:
-	if difficulty in TILTAK_IDS and tiltakBot != null:
-		tiltakBot.setStrength(TiltakBot.STRENGTH.FAST if difficulty == DIFFICULTY.TILTAK_FAST \
-			else TiltakBot.STRENGTH.STRONG)
-		if tiltakBot.newGame(size, 0):
-			return tiltakBot
-		Notif.message("Tiltak doesn't play %dx%d - using the built-in bot." % [size, size])
+	_halfKomi = 0
+
+	if difficulty in SYNTAKS_IDS and syntaksBot != null:
+		syntaksBot.setStrength(SyntaksBot.STRENGTH.FAST if difficulty == DIFFICULTY.SYNTAKS_FAST \
+			else SyntaksBot.STRENGTH.STRONG)
+
+		var halfKomi: int = syntaksBot.requiredHalfKomi()
+		if syntaksBot.newGame(size, halfKomi):
+			_halfKomi = halfKomi
+			return syntaksBot
+
+		Notif.message("Syntaks only plays 6x6 - using the built-in bot.")
 		localBot.setDifficulty(LocalBot.DIFFICULTY.THOUGHTFUL)
 		return localBot
 

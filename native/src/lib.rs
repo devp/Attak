@@ -1,4 +1,4 @@
-//! GDExtension exposing the tiltak Tak engine to Attak.
+//! GDExtension exposing the syntaks Tak engine to Attak.
 //!
 //! The surface is deliberately tiny: positions go in as TPS and moves come back
 //! as PTN, which is the vocabulary Attak already speaks (`GameState.getTPS()` and
@@ -11,27 +11,32 @@
 //! Godot's object graph, so no deferred calls or threaded-extension features are
 //! needed.
 //!
-//! tiltak is GPL-3.0-or-later. See LICENSE-THIRD-PARTY.md at the repository root.
+//! syntaks is MIT licensed. See LICENSE-THIRD-PARTY.md at the repository root.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::Instant;
 
-use board_game_traits::Position as _;
 use godot::prelude::*;
-use pgn_traits::PgnPosition as _;
-use tiltak::position::{Komi, Position};
-use tiltak::search::{self, MctsSetting, MonteCarloTree};
+use syntaks::board::Position;
+use syntaks::limit::Limits;
+use syntaks::movegen;
+use syntaks::search::{MAX_DEPTH, Searcher};
+use syntaks::tei::TeiOptions;
 
-struct AttakTiltak;
+struct AttakSyntaks;
 
 #[gdextension]
-unsafe impl ExtensionLibrary for AttakTiltak {}
+unsafe impl ExtensionLibrary for AttakSyntaks {}
 
-/// Board sizes tiltak actually implements. Other sizes have zobrist keys but no
-/// evaluation or policy parameters, and searching them panics inside tiltak
-/// (`unimplemented!("Unsupported size")`), so they are rejected up front.
-const SUPPORTED_SIZES: [i32; 3] = [4, 5, 6];
+/// syntaks implements 6x6 and nothing else -- it answers `Only 6x6 supported` to
+/// any other `teinewgame`. Attak offers 3-8, so every other size falls back to
+/// the built-in GDScript bot.
+const SUPPORTED_SIZES: [i32; 1] = [6];
+
+/// syntaks is built around a fixed komi of 2 (`HalfKomi ... min 4 max 4`), so a
+/// game it plays has to use that komi for its evaluation to mean anything.
+const REQUIRED_HALF_KOMI: i32 = 4;
 
 #[derive(Default)]
 struct SearchState {
@@ -42,17 +47,13 @@ struct SearchState {
 
 #[derive(GodotClass)]
 #[class(base = RefCounted, init)]
-struct TiltakEngine {
-    #[init(val = 5)]
-    size: i32,
-    #[init(val = 0)]
-    half_komi: i32,
+struct SyntaksEngine {
     #[init(val = None)]
     search: Option<Arc<SearchState>>,
 }
 
 #[godot_api]
-impl TiltakEngine {
+impl SyntaksEngine {
     /// Board sizes this engine can play.
     #[func]
     fn supported_sizes(&self) -> PackedInt32Array {
@@ -64,56 +65,57 @@ impl TiltakEngine {
         SUPPORTED_SIZES.contains(&size)
     }
 
-    /// Configures the engine for a new game. Returns false for a board size or
-    /// komi tiltak cannot handle, so the caller can fall back to another engine.
+    /// The komi a game must use for this engine to be worth asking. Attak reads
+    /// this rather than hard-coding it, so the two cannot drift apart.
+    #[func]
+    fn required_half_komi(&self) -> i32 {
+        REQUIRED_HALF_KOMI
+    }
+
+    /// Configures the engine for a new game. Returns false for anything syntaks
+    /// cannot play, so the caller can fall back to another engine.
     #[func]
     fn new_game(&mut self, size: i32, half_komi: i32) -> bool {
         if !SUPPORTED_SIZES.contains(&size) {
-            godot_warn!("tiltak does not support {size}x{size}");
+            godot_warn!("syntaks only plays 6x6, not {size}x{size}");
             return false;
         }
-        if komi_from(half_komi).is_none() {
-            godot_warn!("tiltak rejected half-komi {half_komi}");
+        if half_komi != REQUIRED_HALF_KOMI {
+            godot_warn!("syntaks requires half-komi {REQUIRED_HALF_KOMI}, got {half_komi}");
             return false;
         }
-        self.size = size;
-        self.half_komi = half_komi;
         self.search = None;
         true
     }
 
     /// Every legal move in `tps`, as PTN. Exists so Attak's own GDScript move
-    /// generator can be differentially tested against a known-correct one.
+    /// generator can be differentially tested against an independent one.
     #[func]
     fn legal_moves(&self, tps: GString) -> PackedStringArray {
-        let moves = match self.size {
-            4 => legal_moves_sized::<4>(self.half_komi, &tps.to_string()),
-            5 => legal_moves_sized::<5>(self.half_komi, &tps.to_string()),
-            6 => legal_moves_sized::<6>(self.half_komi, &tps.to_string()),
-            _ => None,
+        let Some(position) = parse(&tps.to_string()) else {
+            return PackedStringArray::new();
         };
-        match moves {
-            Some(moves) => PackedStringArray::from_iter(moves.iter().map(|m| GString::from(m.as_str()))),
-            None => PackedStringArray::new(),
-        }
+
+        let mut moves = Vec::new();
+        movegen::generate_moves(&mut moves, &position);
+
+        PackedStringArray::from_iter(moves.iter().map(|mv| GString::from(mv.to_string().as_str())))
     }
 
     /// Starts a search on a background thread. Returns false if the position
     /// could not be parsed, in which case nothing is running.
     ///
     /// Exactly one budget applies: `nodes` when positive, otherwise `millis`. A
-    /// node budget is reproducible, which is what the weaker difficulties and the
+    /// node budget is reproducible, which is what the weaker difficulty and the
     /// tests want; a time budget scales with the device, which is what the
-    /// strongest difficulty wants.
+    /// stronger one wants.
     #[func]
     fn start_search(&mut self, tps: GString, nodes: i64, millis: i64) -> bool {
         let tps = tps.to_string();
-        let size = self.size;
-        let half_komi = self.half_komi;
 
         // Parse here so an unusable position is reported synchronously rather
         // than as a silently empty result later.
-        if !position_parses(size, half_komi, &tps) {
+        if parse(&tps).is_none() {
             return false;
         }
 
@@ -121,7 +123,7 @@ impl TiltakEngine {
         self.search = Some(state.clone());
 
         std::thread::spawn(move || {
-            let found = search_position(size, half_komi, &tps, nodes, millis);
+            let found = search_position(&tps, nodes, millis);
             *state.result.lock().unwrap() = found;
             state.done.store(true, Ordering::Release);
         });
@@ -155,72 +157,51 @@ impl TiltakEngine {
     /// which is precisely what the polling API exists to avoid.
     #[func]
     fn search_blocking(&self, tps: GString, nodes: i64) -> GString {
-        let found = search_position(self.size, self.half_komi, &tps.to_string(), nodes, 0);
+        let found = search_position(&tps.to_string(), nodes, 0);
         GString::from(found.unwrap_or_default().as_str())
     }
 }
 
-fn komi_from(half_komi: i32) -> Option<Komi> {
-    i8::try_from(half_komi).ok().and_then(Komi::from_half_komi)
-}
-
-fn parse<const S: usize>(half_komi: i32, tps: &str) -> Option<Position<S>> {
-    let komi = komi_from(half_komi)?;
-    if tps.is_empty() || tps == "startpos" {
-        return Some(Position::start_position_with_komi(komi));
+/// syntaks parses TPS from whitespace-separated parts, the same way its TEI
+/// `position tps ...` handler receives them.
+fn parse(tps: &str) -> Option<Position> {
+    let trimmed = tps.trim();
+    if trimmed.is_empty() || trimmed == "startpos" {
+        return Some(Position::startpos());
     }
-    Position::from_fen_with_komi(tps, komi).ok()
+
+    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+    Position::from_tps_parts(&parts).ok()
 }
 
-fn position_parses(size: i32, half_komi: i32, tps: &str) -> bool {
-    match size {
-        4 => parse::<4>(half_komi, tps).is_some(),
-        5 => parse::<5>(half_komi, tps).is_some(),
-        6 => parse::<6>(half_komi, tps).is_some(),
-        _ => false,
-    }
-}
+fn search_position(tps: &str, nodes: i64, millis: i64) -> Option<String> {
+    let position = parse(tps)?;
 
-fn legal_moves_sized<const S: usize>(half_komi: i32, tps: &str) -> Option<Vec<String>> {
-    let position = parse::<S>(half_komi, tps)?;
-    let mut moves = Vec::new();
-    position.generate_moves(&mut moves);
-    Some(moves.iter().map(|mv| position.move_to_san(mv)).collect())
-}
+    let mut searcher = Searcher::new();
+    let start = Instant::now();
+    let mut limits = Limits::new(start);
 
-fn search_position(
-    size: i32,
-    half_komi: i32,
-    tps: &str,
-    nodes: i64,
-    millis: i64,
-) -> Option<String> {
-    match size {
-        4 => search_sized::<4>(half_komi, tps, nodes, millis),
-        5 => search_sized::<5>(half_komi, tps, nodes, millis),
-        6 => search_sized::<6>(half_komi, tps, nodes, millis),
-        _ => None,
-    }
-}
-
-fn search_sized<const S: usize>(
-    half_komi: i32,
-    tps: &str,
-    nodes: i64,
-    millis: i64,
-) -> Option<String> {
-    let position = parse::<S>(half_komi, tps)?;
-
-    // MctsSetting::default() leaves value/policy params unset, which tiltak then
-    // resolves per komi from the position itself, so there is nothing to wire up.
-    let (mv, _score) = if nodes > 0 {
-        search::mcts::<S>(position.clone(), nodes as u64)
+    let accepted = if nodes > 0 {
+        limits.set_nodes(nodes as usize)
     } else {
-        let budget = Duration::from_millis(millis.max(1) as u64);
-        let mut tree = MonteCarloTree::new(position.clone(), MctsSetting::<S>::default());
-        tree.search_for_time(budget, |_| {});
-        tree.best_move()?
+        // Limits takes seconds; the caller thinks in milliseconds.
+        limits.set_movetime(millis.max(1) as f64 / 1000.0)
     };
 
-    Some(position.move_to_san(&mv))
+    if !accepted {
+        return None;
+    }
+
+    searcher.start_search(
+        &position,
+        &[],
+        start,
+        limits,
+        MAX_DEPTH,
+        &[],
+        &TeiOptions::default(),
+    );
+    searcher.wait();
+
+    searcher.best_move().map(|mv| mv.to_string())
 }
