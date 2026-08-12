@@ -1,0 +1,146 @@
+name: "Build Android APK"
+
+env:
+  GODOT_VERSION: 4.4.1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "claude/**"
+    tags:
+      - "android-*"
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ubuntu-latest runners already ship an Android SDK (ANDROID_HOME set, with
+      # build-tools and platform-tools), which is all the Android tooling the
+      # non-Gradle export path needs. That is why this doesn't use the
+      # barichello/godot-ci image the web workflow uses -- its Android SDK
+      # contents aren't guaranteed.
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache Godot and export templates
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-android
+
+      - name: Download Godot and export templates
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          set -eux
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          mkdir -p ~/godot ~/.local/share/godot/export_templates
+
+          curl -fsSL -o /tmp/godot.zip \
+            "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          chmod +x ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64
+
+          curl -fsSL -o /tmp/templates.tpz \
+            "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q /tmp/templates.tpz -d /tmp/tpz
+          mv /tmp/tpz/templates ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: cargo-
+
+      # The syntaks GDExtension. Built for Android arm64 and for the runner's own
+      # x86_64, so the tests below can exercise the native engine too.
+      #
+      # Only the NDK's clang is needed as a linker -- nothing on this dependency
+      # path uses bindgen or a C build, so CLANG_PATH is not required.
+      - name: Build syntaks GDExtension
+        run: |
+          set -eux
+          rustup target add aarch64-linux-android
+
+          ndk="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-$ANDROID_NDK_ROOT}}"
+          bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          # The linker's filename carries the target API level, and which levels
+          # ship varies by NDK release. Take the lowest available, which is the
+          # most permissive about the devices the result will run on.
+          linker=$(ls "$bin"/aarch64-linux-android[0-9]*-clang | sort -V | head -1)
+          test -x "$linker"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$linker"
+
+          mkdir -p addons/syntaks/bin
+          cargo build --release --manifest-path native/Cargo.toml --target aarch64-linux-android
+          cp native/target/aarch64-linux-android/release/libattak_syntaks.so \
+             addons/syntaks/bin/libattak_syntaks.android.arm64.so
+
+          cargo build --release --manifest-path native/Cargo.toml
+          cp native/target/release/libattak_syntaks.so \
+             addons/syntaks/bin/libattak_syntaks.linux.x86_64.so
+
+          test -s addons/syntaks/bin/libattak_syntaks.android.arm64.so
+          file addons/syntaks/bin/*.so
+
+      # Run these with the editor binary, before exporting: GameState's asserts
+      # are compiled out of release templates, so an illegal move would slip
+      # through silently in an exported build.
+      - name: Run tests
+        run: |
+          export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          chmod +x "$GODOT"
+          "$GODOT" --headless --import
+          # The library was just built, so a skipped syntaks test means it failed to
+          # load -- REQUIRE_SYNTAKS turns that into a failure instead of a pass.
+          export REQUIRE_SYNTAKS=1
+          for t in moveGenTest botTest botUiTest syntaksTest; do
+            echo "== $t"
+            "$GODOT" --headless "tools/$t.tscn" || exit 1
+          done
+
+      - name: Build APKs
+        run: |
+          export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          chmod +x "$GODOT" tools/build-apk.sh
+          # The one to sideload: arm64 with the syntaks engine, release-sized.
+          PRESET="Android arm64" RELEASE=1 \
+            tools/build-apk.sh "$PWD/build/android/Attak_arm64_syntaks.apk"
+
+          # Broad-compatibility build: both ABIs. Built without syntaks
+          # deliberately -- the extension is arm64-only, so including it here
+          # would leave 32-bit devices with a library they cannot load.
+          SKIP_SYNTAKS=1 PRESET="Android" RELEASE=1 \
+            tools/build-apk.sh "$PWD/build/android/Attak_universal.apk"
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: Attak-apk
+          path: build/android/*.apk
+          if-no-files-found: error
+
+      - name: Attach APKs to prerelease
+        if: startsWith(github.ref, 'refs/tags/android-')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/android/*.apk
+          prerelease: true
+          fail_on_unmatched_files: true

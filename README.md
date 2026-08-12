@@ -27,6 +27,31 @@ simply go to [attak.club](attak.club)
 if you wish to host attak yourself, download `Attak_Web.zip`, unzip, and serve `Attak.html`,
 do note that some functionality may be limited if your domain does not have access to the playtak api
 
+## Playing offline against a bot
+
+The **Play → Vs Bot** tab starts a game against a bot with no account and no
+network connection. Pick a board size, your colour, and a difficulty.
+
+The first three difficulties run a small built-in GDScript opponent, which works
+on every platform including the web build. The two **Syntaks** difficulties run
+[syntaks](https://github.com/Ciekce/syntaks) as a native extension — far
+stronger, but only on desktop and Android arm64, and only on 6x6, which is the
+size syntaks implements. They are hidden automatically when unavailable, and
+picking one on another board size falls back to the built-in bot.
+
+Syntaks games use a komi of 2, which is the komi the engine is built around.
+
+## Building
+
+`tools/build-apk.sh` produces a signed Android APK headlessly; see the comments at
+the top of the script for the toolchain it expects. `.github/workflows/android.yml`
+runs the same script in CI and uploads the APKs as artifacts.
+
+The Syntaks extension is MIT licensed and places no conditions on Attak's own
+licensing — see [LICENSE-THIRD-PARTY.md](LICENSE-THIRD-PARTY.md), which also
+explains why it depends on a fork. Build with `SKIP_SYNTAKS=1` for an APK with no
+native engine at all.
+
 ## Contributing
 Attak is an open source hobby project, if you want to help me out, let me know!
 

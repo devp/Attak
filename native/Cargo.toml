@@ -1,0 +1,34 @@
+[package]
+name = "attak_syntaks"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "GDExtension exposing the syntaks Tak engine to Attak"
+license = "MIT"
+
+[lib]
+# The "lib" prefix in the resulting libattak_syntaks.so is required: Godot's
+# Android exporter rejects native libraries whose filename does not start with
+# it (see save_apk_so in platform/android/export/export_plugin.cpp).
+name = "attak_syntaks"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Pinned to Godot 4.4's API level to match the editor and export templates.
+godot = { version = "0.5", features = ["api-4-4"] }
+
+# syntaks is MIT licensed, so unlike the GPL engine this replaces it imposes no
+# obligations on Attak's own licensing.
+#
+# This points at a fork rather than Ciekce/syntaks because upstream cannot be
+# embedded as-is: it is a binary-only crate, its road detection falls through to
+# todo!() on targets without AVX2 or SSE4.2 (all of aarch64), and the search
+# result is only ever printed. The fork's branch fixes those three things and
+# changes nothing else; see LICENSE-THIRD-PARTY.md.
+syntaks = { git = "https://github.com/devp/syntaks", rev = "3538f8a" }
+
+[profile.release]
+opt-level = 3
+lto = true
+# Note: panic must stay "unwind". gdext catches panics at the FFI boundary and
+# reports them as Godot errors, which needs unwinding.

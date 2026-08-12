@@ -1,0 +1,77 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/UI/BotMenu.gd" id="1_botmenu"]
+[ext_resource type="Script" path="res://src/interfaces/localBot.gd" id="2_localbot"]
+
+[node name="Bot" type="VBoxContainer"]
+visible = false
+alignment = 1
+script = ExtResource("1_botmenu")
+
+[node name="GridContainer" type="GridContainer" parent="."]
+layout_mode = 2
+theme_override_constants/h_separation = 20
+columns = 4
+
+[node name="Color" type="Label" parent="GridContainer"]
+layout_mode = 2
+text = "My Color:"
+
+[node name="Color2" type="OptionButton" parent="GridContainer"]
+layout_mode = 2
+selected = 0
+allow_reselect = true
+item_count = 2
+popup/item_0/text = "White"
+popup/item_0/id = 0
+popup/item_1/text = "Black"
+popup/item_1/id = 1
+
+[node name="Size" type="Label" parent="GridContainer"]
+layout_mode = 2
+text = "Size:"
+
+[node name="Size2" type="OptionButton" parent="GridContainer"]
+layout_mode = 2
+selected = 3
+allow_reselect = true
+item_count = 6
+popup/item_0/text = "3x3"
+popup/item_0/id = 3
+popup/item_1/text = "4x4"
+popup/item_1/id = 4
+popup/item_2/text = "5x5"
+popup/item_2/id = 5
+popup/item_3/text = "6x6"
+popup/item_3/id = 6
+popup/item_4/text = "7x7"
+popup/item_4/id = 7
+popup/item_5/text = "8x8"
+popup/item_5/id = 8
+
+[node name="Difficulty" type="Label" parent="GridContainer"]
+layout_mode = 2
+text = "Difficulty:"
+
+[node name="Difficulty2" type="OptionButton" parent="GridContainer"]
+layout_mode = 2
+selected = 1
+allow_reselect = true
+item_count = 5
+popup/item_0/text = "Random"
+popup/item_0/id = 0
+popup/item_1/text = "Novice"
+popup/item_1/id = 1
+popup/item_2/text = "Careful"
+popup/item_2/id = 2
+popup/item_3/text = "Syntaks"
+popup/item_3/id = 3
+popup/item_4/text = "Syntaks (strong)"
+popup/item_4/id = 4
+
+[node name="Button" type="Button" parent="."]
+layout_mode = 2
+text = "Start Game"
+
+[node name="Bot" type="Node" parent="."]
+script = ExtResource("2_localbot")
