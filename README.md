@@ -27,6 +27,17 @@ simply go to [attak.club](attak.club)
 if you wish to host attak yourself, download `Attak_Web.zip`, unzip, and serve `Attak.html`,
 do note that some functionality may be limited if your domain does not have access to the playtak api
 
+## Building
+
+`tools/build-apk.sh` produces a signed Android APK headlessly; see the comments at
+the top of the script for the toolchain it expects. `.github/workflows/android.yml`
+runs the same script in CI and uploads the APKs as artifacts.
+
+The Syntaks extension is MIT licensed and places no conditions on Attak's own
+licensing — see [LICENSE-THIRD-PARTY.md](LICENSE-THIRD-PARTY.md), which also
+explains why it depends on a fork. Build with `SKIP_SYNTAKS=1` for an APK with no
+native engine at all.
+
 ## Contributing
 Attak is an open source hobby project, if you want to help me out, let me know!
 

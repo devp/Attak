@@ -18,6 +18,9 @@
 #   RELEASE        set to 1 to export release instead of debug. Release builds are
 #                  ~10% smaller, but strip asserts -- prefer debug while testing
 #                  game logic, since src/Logic/gameState.gd relies on assertions.
+#   SKIP_SYNTAKS    set to 1 to build without the syntaks GDExtension, for when the
+#                  Android NDK isn't available to cross-compile it. The result
+#                  plays fine, just without the syntaks engine.
 
 set -euo pipefail
 
@@ -126,6 +129,40 @@ fi
 
 cd "$PROJECT_ROOT"
 
+# The syntaks GDExtension declares an android.arm64 library. If that .so is
+# missing, Godot does NOT fail the export -- it packages a 0-byte file, which then
+# fails to dlopen on the device and logs errors on every launch. Refuse to build
+# that, and offer an explicit way to opt out instead.
+GDEXTENSION="addons/syntaks/syntaks.gdextension"
+ANDROID_LIB="addons/syntaks/bin/libattak_syntaks.android.arm64.so"
+
+restore_gdextension() {
+	if [ -f "$GDEXTENSION.disabled" ]; then
+		mv "$GDEXTENSION.disabled" "$GDEXTENSION"
+		# Re-import before leaving. The build below runs --import while the
+		# extension is moved aside, which deregisters it from .godot/; putting the
+		# file back does not undo that, so anything run afterwards would silently
+		# not see the engine until the next import.
+		"$GODOT" --headless --import >/dev/null 2>&1 || true
+	fi
+}
+trap restore_gdextension EXIT
+
+if [ -f "$GDEXTENSION" ]; then
+	if [ "${SKIP_SYNTAKS:-0}" = 1 ]; then
+		echo "==> building without syntaks (SKIP_SYNTAKS=1)"
+		mv "$GDEXTENSION" "$GDEXTENSION.disabled"
+	elif [ ! -s "$ANDROID_LIB" ]; then
+		die "$ANDROID_LIB is missing or empty.
+  Cross-compile it first:
+    rustup target add aarch64-linux-android
+    export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=\$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang
+    cargo build --release --manifest-path native/Cargo.toml --target aarch64-linux-android
+    cp native/target/aarch64-linux-android/release/libattak_syntaks.so $ANDROID_LIB
+  Or build without it:  SKIP_SYNTAKS=1 $0"
+	fi
+fi
+
 # Generate .godot/ import caches. The export fails without them, and a fresh
 # clone (or CI checkout) has none because .godot/ is gitignored.
 echo "==> importing resources"
@@ -142,6 +179,19 @@ echo "==> exporting $OUTPUT  (preset: $PRESET, $mode)"
 
 echo "==> verifying with $APKSIGNER"
 "$APKSIGNER" verify "$OUTPUT" || die "apksigner could not verify the output"
+
+# Confirm the native engine really landed in the package. Godot only warns when a
+# GDExtension library is missing for an architecture, so without this an APK that
+# silently lost the engine would still look like a clean build.
+if [ -f "$GDEXTENSION" ]; then
+	entry=$(unzip -l "$OUTPUT" | awk '/libattak_syntaks/ {print $1; exit}')
+	if [ -z "$entry" ]; then
+		die "the syntaks extension is enabled but no libattak_syntaks was packaged into $OUTPUT"
+	elif [ "$entry" = "0" ]; then
+		die "libattak_syntaks was packaged into $OUTPUT as a 0-byte file; it would fail to load on device"
+	fi
+	echo "    syntaks engine packaged: $entry bytes"
+fi
 
 # Godot leaves a v4 signature sidecar behind; it isn't needed to install.
 rm -f "$OUTPUT.idsig"
