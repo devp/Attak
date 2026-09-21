@@ -4,7 +4,7 @@ class_name GameData
 enum { #PlayerType
 	LOCAL,
 	PLAYTAK,
-	BOT #not yet implemented
+	BOT
 }
 
 var id: String

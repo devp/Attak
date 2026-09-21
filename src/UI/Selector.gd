@@ -29,6 +29,7 @@ func _ready() -> void:
 	
 	$tabBar/Play/SubTabs/New.pressed.connect(select.bind($New))
 	$tabBar/Play/SubTabs/Join.pressed.connect(select.bind($Join))
+	$tabBar/Play/SubTabs/Bot.pressed.connect(select.bind($Bot))
 	$tabBar/Play/SubTabs/TEI.pressed.connect(select.bind($TEI))
 	$tabBar/Play/SubTabs/Scratch.pressed.connect(select.bind($Scratch))
 	

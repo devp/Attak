@@ -1,0 +1,45 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/UI/BotMenu.gd" id="1_botmenu"]
+
+[node name="Bot" type="VBoxContainer"]
+visible = false
+alignment = 1
+script = ExtResource("1_botmenu")
+
+[node name="GridContainer" type="GridContainer" parent="."]
+layout_mode = 2
+theme_override_constants/h_separation = 20
+columns = 4
+
+[node name="Color" type="Label" parent="GridContainer"]
+layout_mode = 2
+text = "My Color:"
+
+[node name="Color2" type="OptionButton" parent="GridContainer"]
+layout_mode = 2
+selected = 0
+allow_reselect = true
+item_count = 2
+popup/item_0/text = "White"
+popup/item_0/id = 0
+popup/item_1/text = "Black"
+popup/item_1/id = 1
+
+[node name="Difficulty" type="Label" parent="GridContainer"]
+layout_mode = 2
+text = "Difficulty:"
+
+[node name="Difficulty2" type="OptionButton" parent="GridContainer"]
+layout_mode = 2
+selected = 0
+allow_reselect = true
+item_count = 2
+popup/item_0/text = "Syntaks"
+popup/item_0/id = 0
+popup/item_1/text = "Syntaks (strong)"
+popup/item_1/id = 1
+
+[node name="Button" type="Button" parent="."]
+layout_mode = 2
+text = "Start Game"
