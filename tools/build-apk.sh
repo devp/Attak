@@ -20,7 +20,7 @@
 #                  game logic, since src/Logic/gameState.gd relies on assertions.
 #   SKIP_SYNTAKS    set to 1 to build without the syntaks GDExtension, for when the
 #                  Android NDK isn't available to cross-compile it. The result
-#                  plays fine, just without the syntaks engine.
+#                  plays fine, just without the Vs Bot tab.
 
 set -euo pipefail
 

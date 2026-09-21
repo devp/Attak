@@ -43,9 +43,12 @@ ecosystem crates throughout.
 
 ## Building without the engine
 
-The engine remains optional: Attak builds and runs without it. To build without
-the extension:
+The engine remains optional: without it the Vs Bot tab is hidden and the rest of
+Attak is unaffected. To build without the extension:
 
 ```sh
 SKIP_SYNTAKS=1 tools/build-apk.sh
 ```
+
+Nothing in Attak's own sources depends on it — `SyntaksBot` reaches the engine
+only through `ClassDB`, so the scripts do not even name it.

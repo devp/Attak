@@ -108,7 +108,7 @@ jobs:
           # The library was just built, so a skipped syntaks test means it failed to
           # load -- REQUIRE_SYNTAKS turns that into a failure instead of a pass.
           export REQUIRE_SYNTAKS=1
-          for t in syntaksTest; do
+          for t in botUiTest syntaksTest; do
             echo "== $t"
             "$GODOT" --headless "tools/$t.tscn" || exit 1
           done
