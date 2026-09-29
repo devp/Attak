@@ -7,6 +7,12 @@ macos out="build/macos/Attak.app": syntaks-macos
     {{godot}} --headless --import
     {{godot}} --headless --export-release macOS '{{out}}'
 
+# Export the macOS app that opens on Vs Bot with the online tabs hidden
+macos-local-bot out="build/macos-local-bot/Attak.app": syntaks-macos
+    mkdir -p "$(dirname '{{out}}')"
+    {{godot}} --headless --import
+    {{godot}} --headless --export-release 'macOS (local bot)' '{{out}}'
+
 # Build the syntaks GDExtension as a universal macOS dylib
 syntaks-macos:
     rustup target add x86_64-apple-darwin aarch64-apple-darwin

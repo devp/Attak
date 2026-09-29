@@ -17,7 +17,10 @@ func _ready() -> void:
 		th.set_font_size(&"font_size", &"TabButton", th.get_font_size(&"font_size", &"TabButton") * 4)
 	
 	tabBar.vertical = not Globals.isMobile()
-	
+
+	if Globals.isLocalBotOnly() and SyntaksBot.available():
+		localBotOnly()
+
 	active = start
 	for i in get_children():
 		i.visible = i == start or i == tabBar
@@ -35,6 +38,19 @@ func _ready() -> void:
 	
 	$tabBar/Watch/SubTabs/Current.pressed.connect(select.bind($Watch))
 	$tabBar/Watch/SubTabs/Past.pressed.connect(select.bind($OldGames))
+
+
+# Open on Vs Bot and strip the online tabs. Home and Play are left with one
+# subtab each, so the top-level buttons select those directly. TEI stays under
+# the experimental setting, which toggles it at runtime.
+func localBotOnly() -> void:
+	start = $Bot
+	$Login.tabOnLogin = $Bot
+	for path in ["Home/SubTabs/Profile", "Home/SubTabs/Discord", "Home/SubTabs/USTA",
+			"Play/SubTabs/New", "Play/SubTabs/Join", "Play/SubTabs/Scratch", "Watch"]:
+		tabBar.get_node(path).hide()
+	$tabBar/Home.pressed.connect(select.bind($Settings))
+	$tabBar/Play.pressed.connect(select.bind($Bot))
 
 
 func select(node: Control) -> void:

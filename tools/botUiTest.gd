@@ -37,6 +37,9 @@ func _ready() -> void:
 			else:
 				print("note: SyntaksEngine not built for this platform, game path skipped")
 		else:
+			if Globals.isLocalBotOnly():
+				_checkLocalBotOnly(menu, panel)
+
 			# Selector.select() asserts its target is a direct child, so a wrong
 			# parent shows up here rather than at runtime on the device.
 			button.pressed.emit()
@@ -59,6 +62,19 @@ func _ready() -> void:
 
 func _fail(msg: String) -> void:
 	failures.append(msg)
+
+
+# Run with `-- --local-bot`: the menu must open on Vs Bot with the online tabs gone.
+func _checkLocalBotOnly(menu: Node, panel: Node) -> void:
+	if not panel.visible or menu.get_node("Login").visible:
+		_fail("local-bot-only build did not open on the Bot panel")
+	for path in ["tabBar/Home/SubTabs/Profile", "tabBar/Play/SubTabs/New",
+			"tabBar/Play/SubTabs/Join", "tabBar/Watch"]:
+		if menu.get_node(path).visible:
+			_fail("local-bot-only build still shows %s" % path)
+	menu.get_node("tabBar/Home").pressed.emit()
+	if not menu.get_node("Settings").visible:
+		_fail("Home did not open Settings in local-bot-only mode")
 
 
 func _startGameAndCheckReply(panel: Node) -> void:
