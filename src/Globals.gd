@@ -13,3 +13,9 @@ func _ready():
 
 func isMobile():
 	return OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")
+
+
+# Builds exported with the "local_bot" feature open straight on the Vs Bot tab
+# and hide the online tabs. `godot -- --local-bot` does the same from the editor.
+func isLocalBotOnly() -> bool:
+	return OS.has_feature("local_bot") or "--local-bot" in OS.get_cmdline_user_args()

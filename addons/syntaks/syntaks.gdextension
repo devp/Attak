@@ -14,5 +14,7 @@ reloadable = false
 ; libs with no matching extension library and fail to load it.
 linux.debug.x86_64 = "res://addons/syntaks/bin/libattak_syntaks.linux.x86_64.so"
 linux.release.x86_64 = "res://addons/syntaks/bin/libattak_syntaks.linux.x86_64.so"
+macos.debug = "res://addons/syntaks/bin/libattak_syntaks.macos.dylib"
+macos.release = "res://addons/syntaks/bin/libattak_syntaks.macos.dylib"
 android.debug.arm64 = "res://addons/syntaks/bin/libattak_syntaks.android.arm64.so"
 android.release.arm64 = "res://addons/syntaks/bin/libattak_syntaks.android.arm64.so"

@@ -1,13 +1,10 @@
-name: "Build Android APK"
+name: "Build apps"
 
 env:
   GODOT_VERSION: 4.4.1
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "android-*"
 
 jobs:
   apk:
@@ -112,6 +109,8 @@ jobs:
             echo "== $t"
             "$GODOT" --headless "tools/$t.tscn" || exit 1
           done
+          echo "== botUiTest --local-bot"
+          "$GODOT" --headless tools/botUiTest.tscn -- --local-bot
 
       - name: Build APKs
         run: |
@@ -120,6 +119,10 @@ jobs:
           # The one to sideload: arm64 with the syntaks engine, release-sized.
           PRESET="Android arm64" RELEASE=1 \
             tools/build-apk.sh "$PWD/build/android/Attak_arm64_syntaks.apk"
+
+          # Same, opening on Vs Bot with the online tabs hidden.
+          PRESET="Android arm64 (local bot)" RELEASE=1 \
+            tools/build-apk.sh "$PWD/build/android/Attak_arm64_local_bot.apk"
 
           # Broad-compatibility build: both ABIs. Built without syntaks
           # deliberately -- the extension is arm64-only, so including it here
@@ -139,5 +142,92 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: build/android/*.apk
+          prerelease: true
+          fail_on_unmatched_files: true
+
+  macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Godot and export templates
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/Library/Application Support/Godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-macos
+
+      - name: Download Godot and export templates
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          set -eux
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          templates="$HOME/Library/Application Support/Godot/export_templates"
+          mkdir -p ~/godot "$templates"
+
+          curl -fsSL -o /tmp/godot.zip "$base/Godot_v${GODOT_VERSION}-stable_macos.universal.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+
+          curl -fsSL -o /tmp/templates.tpz \
+            "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q /tmp/templates.tpz -d /tmp/tpz
+          mv /tmp/tpz/templates "$templates/${GODOT_VERSION}.stable"
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-macos-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: cargo-macos-
+
+      - name: Build syntaks GDExtension
+        run: |
+          set -eux
+          for t in x86_64-apple-darwin aarch64-apple-darwin; do
+            rustup target add "$t"
+            cargo build --release --manifest-path native/Cargo.toml --target "$t"
+          done
+          mkdir -p addons/syntaks/bin
+          lipo -create -output addons/syntaks/bin/libattak_syntaks.macos.dylib \
+            native/target/x86_64-apple-darwin/release/libattak_syntaks.dylib \
+            native/target/aarch64-apple-darwin/release/libattak_syntaks.dylib
+          lipo -info addons/syntaks/bin/libattak_syntaks.macos.dylib
+
+      - name: Run tests
+        run: |
+          GODOT="$HOME/godot/Godot.app/Contents/MacOS/Godot"
+          "$GODOT" --headless --import
+          export REQUIRE_SYNTAKS=1
+          "$GODOT" --headless tools/botUiTest.tscn -- --local-bot
+
+      - name: Export app
+        run: |
+          set -eux
+          GODOT="$HOME/godot/Godot.app/Contents/MacOS/Godot"
+          mkdir -p build/macos
+          "$GODOT" --headless --export-release "macOS (local bot)" "$PWD/build/macos/Attak_macos_local_bot.zip"
+          unzip -l build/macos/Attak_macos_local_bot.zip | grep -q 'libattak_syntaks.macos.dylib'
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Attak-macos
+          path: build/macos/*.zip
+          if-no-files-found: error
+
+      - name: Attach app to prerelease
+        if: startsWith(github.ref, 'refs/tags/android-')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/macos/*.zip
           prerelease: true
           fail_on_unmatched_files: true

@@ -30,8 +30,8 @@ func save():
 static func loadOrNew() -> SettingData:
 	var data
 	if ResourceLoader.exists(savePath):
-		ResourceLoader.load_threaded_request(savePath, "", true)
-		data = ResourceLoader.load_threaded_get(savePath)
+		# Not threaded: the fullScreen setter changes the window, which macOS only allows on the main thread.
+		data = ResourceLoader.load(savePath)
 		if data == null: # data couldnt load correctly
 			data = SettingData.new()
 			

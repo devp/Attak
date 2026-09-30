@@ -15,6 +15,7 @@
 #   PRESET         export preset name                      (default: Android)
 #                    "Android"       arm64-v8a + armeabi-v7a, ~56 MB
 #                    "Android arm64" arm64-v8a only, ~30 MB
+#                    "Android arm64 (local bot)"  same, opens on Vs Bot with the online tabs hidden
 #   RELEASE        set to 1 to export release instead of debug. Release builds are
 #                  ~10% smaller, but strip asserts -- prefer debug while testing
 #                  game logic, since src/Logic/gameState.gd relies on assertions.
