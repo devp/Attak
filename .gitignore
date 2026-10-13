@@ -1,0 +1,12 @@
+# Godot
+.godot/
+*.translation
+
+# Build output
+build/
+android/
+
+# Native GDExtension build artifacts
+native/target/
+# Compiled extension libraries -- built by tools/build-apk.sh or CI, not committed
+addons/syntaks/bin/
