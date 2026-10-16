@@ -37,6 +37,8 @@ How Attak ships a TEI engine inside its Android app, and the evidence behind it.
   6x6 game played to the end. That spike used a Gradle-built plugin to find
   `nativeLibraryDir`; the current build reads the same directory from `/proc/maps`,
   which the phone showed to agree.
+- **Phone (arm64), current build, 2026-10-16.** The no-Gradle `Attak.apk` showed the
+  Vs Bot tab and played a game against bundled syntaks.
 - **CI.** `tools/teiGameTest` plays a full 6x6 game through the real Vs Bot tab
   (`TEInterface` drives syntaks as Black, a second syntaks stands in for the human), on
   desktop and on an API 34 x86_64 emulator. `tools/build-apk.sh` fails the build if the
