@@ -1,0 +1,7 @@
+# Godot import cache
+.godot/
+
+# Build outputs (tools/build-*.sh); CI copies the Android engines into
+# addons/attak_engines/bin/<abi>/ for the export plugin to bundle.
+build/
+addons/attak_engines/bin/
