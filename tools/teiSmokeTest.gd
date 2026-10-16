@@ -4,7 +4,8 @@ extends Node
 ##
 ## Desktop:  godot --headless tools/teiSmokeTest.tscn -- --engine=/path/to/syntaks
 ## Android:  the "Android x86_64 (TEI smoke test)" preset launches straight into
-##           this scene and tests the first bundled engine.
+##           this scene and tests the first bundled engine, then hands over to
+##           tools/teiGameTest.tscn for a full game.
 ##
 ## Prints one "TEI_SMOKE PASS" or "TEI_SMOKE FAIL: <why>" line, which CI looks
 ## for (on Android, in logcat), and exits non-zero on failure.
@@ -20,6 +21,11 @@ func _ready() -> void:
 		print("TEI_SMOKE PASS")
 	else:
 		print("TEI_SMOKE FAIL: ", why)
+	# On Android this is the smoke APK's whole run, so go on to a full game
+	# through the TEI tab (tools/teiGameTest.tscn) once the engine answers.
+	if why.is_empty() and OS.get_name() == "Android":
+		get_tree().change_scene_to_file.call_deferred("res://tools/teiGameTest.tscn")
+		return
 	get_tree().quit(0 if why.is_empty() else 1)
 
 

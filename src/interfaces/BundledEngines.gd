@@ -7,9 +7,12 @@ class_name BundledEngines
 ## there with exec permission. So engines are packaged as lib<name>.so (still
 ## ordinary executables) by the AttakEngines plugin, and found again here.
 
-## display name -> filename inside the bundled-engine directory.
+## name: shown in the TEI tab.  file: inside the bundled-engine directory.
+## sizes / komi (optional): the only board sizes and komi the engine plays. An
+## engine given anything else may carry on regardless (syntaks does), leaving it
+## and the board disagreeing about the game, so the TEI tab refuses to start.
 const MANIFEST: Array[Dictionary] = [
-	{"name": "syntaks", "file": "libsyntaks.so"},
+	{"name": "syntaks", "file": "libsyntaks.so", "sizes": [6], "komi": [2.0]},
 ]
 
 ## Name of the Android plugin singleton (see android-plugin/).
@@ -21,14 +24,16 @@ static func plugin():
 
 
 ## Where bundled engines live on this platform, or "" if nowhere.
+## Desktop builds bundle nothing; ATTAK_ENGINE_DIR stands in for nativeLibraryDir
+## there, so tests can run the bundled-engine path.
 static func directory() -> String:
 	if OS.get_name() == "Android":
 		var p = plugin()
 		return p.getNativeLibraryDir() if p != null else ""
-	return ""
+	return OS.get_environment("ATTAK_ENGINE_DIR")
 
 
-## Engines from the manifest that are actually present: [{name, path}].
+## Manifest entries for the engines actually present, each with "path" added.
 static func list() -> Array[Dictionary]:
 	var found: Array[Dictionary] = []
 	var dir := directory()
@@ -37,8 +42,22 @@ static func list() -> Array[Dictionary]:
 	for entry in MANIFEST:
 		var path := dir.path_join(entry["file"])
 		if exists(path):
-			found.append({"name": entry["name"], "path": path})
+			found.append(entry.merged({"path": path}))
 	return found
+
+
+## Why `engine` (a list() entry) can't play this game, or "" if it can.
+static func unsupported(engine: Dictionary, size: int, komi: float) -> String:
+	var sizes: Array = engine.get("sizes", [])
+	var komis: Array = engine.get("komi", [])
+	if (sizes.is_empty() or size in sizes) and (komis.is_empty() or komi in komis):
+		return ""
+	var parts := PackedStringArray()
+	if not sizes.is_empty():
+		parts.append("/".join(sizes.map(func(s): return "%dx%d" % [s, s])))
+	if not komis.is_empty():
+		parts.append("komi " + " or ".join(komis.map(func(k): return str(int(k)) if k == int(k) else str(k))))
+	return "%s only plays %s." % [engine["name"], " with ".join(parts)]
 
 
 ## Whether a file exists. On Android, Godot's FileAccess reports every path

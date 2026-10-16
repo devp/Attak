@@ -107,13 +107,19 @@ jobs:
       - name: Build AttakEngines plugin AAR
         run: tools/build-plugin.sh build/engines
 
-      # Desktop end-to-end: the app's own spawn path (EngineProbe ->
-      # OS.execute_with_pipe) against a native x86_64 syntaks.
+      # Desktop end-to-end against a native x86_64 syntaks: the app's spawn
+      # path (EngineProbe -> OS.execute_with_pipe), then a full 6x6 game
+      # through the TEI tab, with ATTAK_ENGINE_DIR standing in for Android's
+      # nativeLibraryDir. Run with the editor binary so GameState asserts are on.
       - name: Run tests
         run: |
           export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           "$GODOT" --headless --import
           "$GODOT" --headless tools/teiSmokeTest.tscn -- --engine="$PWD/build/engines/host/syntaks"
+          mkdir -p build/engines/desktop
+          cp build/engines/host/syntaks build/engines/desktop/libsyntaks.so
+          ATTAK_ENGINE_DIR="$PWD/build/engines/desktop" \
+            "$GODOT" --headless tools/teiGameTest.tscn
 
       - name: Build APKs
         run: |
@@ -156,7 +162,8 @@ jobs:
           fail_on_unmatched_files: true
 
   # Installs the x86_64 smoke-test APK on an emulator and checks the bundled
-  # engine really spawns and answers there. Catches packaging and exec
+  # engine really spawns and answers there, then plays a full 6x6 game against
+  # it through the TEI tab. Catches packaging and exec
   # regressions without a phone; arm64 still needs a real device.
   emulator:
     needs: apk
@@ -186,4 +193,4 @@ jobs:
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: tools/emulator-smoke.sh build/smoke/Attak_x86_64_tei_smoke.apk
+          script: tools/emulator-smoke.sh build/smoke/Attak_x86_64_tei_smoke.apk 300
