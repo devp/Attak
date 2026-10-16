@@ -1,0 +1,37 @@
+// Godot v2 Android plugin that carries Attak's bundled TEI engines.
+//
+// The engines are executables, packaged as src/main/jniLibs/<abi>/lib<name>.so
+// so that Android extracts them into the app's nativeLibraryDir -- the one
+// app-owned place it still lets an app exec from. tools/build-plugin.sh copies
+// them in before building; they are not committed.
+//
+// Built with: tools/build-plugin.sh (see there for the output location).
+
+plugins {
+    // Matches the AGP version in Godot 4.4.1's Android build template.
+    id 'com.android.library' version '8.2.0'
+}
+
+android {
+    namespace 'club.attak.engines'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 21
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packagingOptions {
+        // Stripping is done when syntaks is built; leave the binaries byte-for-byte.
+        doNotStrip '**/*.so'
+    }
+}
+
+dependencies {
+    // Provided by the app at runtime; must match the Godot version exporting it.
+    compileOnly 'org.godotengine:godot:4.4.1.stable'
+}

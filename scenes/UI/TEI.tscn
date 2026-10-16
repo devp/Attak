@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://7hykyeloohuo"]
+[gd_scene load_steps=4 format=3 uid="uid://7hykyeloohuo"]
 
 [ext_resource type="Script" uid="uid://ctrh8cwahg48f" path="res://src/UI/TEIMenu.gd" id="1_0tdpq"]
 [ext_resource type="Script" uid="uid://d4jmkbwi8l7r4" path="res://src/interfaces/TEInterface.gd" id="2_gk773"]
+[ext_resource type="Script" path="res://src/UI/EngineDiagnostics.gd" id="3_diag"]
 
 [node name="TEI" type="VBoxContainer"]
 visible = false
@@ -117,3 +118,8 @@ text = "Start Game"
 
 [node name="TEI" type="Node" parent="."]
 script = ExtResource("2_gk773")
+
+[node name="Diagnostics" type="VBoxContainer" parent="." node_paths=PackedStringArray("fallback_path_entry")]
+layout_mode = 2
+script = ExtResource("3_diag")
+fallback_path_entry = NodePath("../HBoxContainer/LineEdit")

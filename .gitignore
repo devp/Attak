@@ -1,0 +1,15 @@
+# Godot import cache
+.godot/
+
+# Build outputs (tools/build-*.sh)
+build/
+addons/attak_engines/bin/
+
+# Godot's Android build template, installed by tools/build-apk.sh for Gradle presets
+android/
+
+# Android plugin build (android-plugin/); engines are copied into jniLibs at build time
+android-plugin/.gradle/
+android-plugin/build/
+android-plugin/local.properties
+android-plugin/src/main/jniLibs/
