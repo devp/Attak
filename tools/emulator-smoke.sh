@@ -19,6 +19,12 @@ LOG="$(mktemp)"
 adb wait-for-device
 adb install -r -g "$APK"
 
+# Let a freshly booted emulator settle first. Its post-boot configuration
+# changes (overlays and the like) make Android relaunch the foreground activity
+# in the same process, which Godot can't survive: the second init crashes.
+adb shell am wait-for-broadcast-idle >/dev/null 2>&1 || true
+sleep 30
+
 # Stream logcat to a file from before launch. Reading the device buffer back
 # afterwards (logcat -d) can miss the result: once the test quits, Godot may be
 # re-initialised in the same process and flood the buffer with errors.
@@ -49,8 +55,9 @@ echo "==> app log, pid ${app_pid:-unknown} ($(wc -l < "$LOG") logcat lines captu
 if [ -n "$app_pid" ]; then
 	grep -E "\(\s*$app_pid\):" "$LOG" | grep -vE "$noise" | awk 'NR <= 250' || true
 fi
-echo "==> crash and activity-manager lines"
-grep -E 'F/libc|F/DEBUG.*(signal|Abort|#0[0-4] )|AndroidRuntime|Relaunch|relaunch|has died|ActivityTaskManager.*(config|Config)' "$LOG" | awk 'NR <= 60' || true
+echo "==> crash, relaunch and configuration-change lines"
+grep -E 'F/libc|F/DEBUG.*(signal|Abort|#0[0-4] )|AndroidRuntime|has died|[Rr]elaunch|[Cc]onfig(uration)? ?[Cc]hange|Destroying GodotActivity' "$LOG" \
+	| grep -v 'framework.jar' | awk 'NR <= 60' || true
 
 echo "==> ${result:-no TEI_GAME line within ${TIMEOUT}s}"
 [[ "$result" == "TEI_GAME PASS"* ]]
