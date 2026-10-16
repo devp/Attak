@@ -39,8 +39,14 @@ for _ in $(seq 1 "$((TIMEOUT / 3))"); do
 done
 sleep 2
 
-echo "==> log ($(wc -l < "$LOG") lines; engine search 'info' lines and repeated GL/re-init errors omitted)"
-grep -vE '< info |GLES3|shader|GL_MAX|_compile_specialization|_display_error_with_code|Method/function failed|utility_function|godot   : (1: )?$|already exist|singleton != nullptr|not supported\.$|\(core/' "$LOG" | head -200
+# Godot's own lines first (where a failed startup explains itself), then the
+# rest. Only the floods are dropped: GL shader-limit errors from the emulator's
+# software renderer, and the per-function errors a second Godot init repeats.
+noise='< info |GLES3|shader|GL_MAX|_compile_specialization|_display_error_with_code|Method/function failed|utility_function|godot   : (1: )?$'
+echo "==> godot log ($(wc -l < "$LOG") lines captured)"
+grep -E 'godot   ' "$LOG" | grep -vE "$noise" | awk 'NR <= 150' || true
+echo "==> crash and activity-manager lines"
+grep -vE 'godot   ' "$LOG" | grep -E 'F/libc|F/DEBUG.*(signal|Abort|#0[0-4] )|AndroidRuntime|Relaunch|relaunch|has died|configuration' | awk 'NR <= 60' || true
 
 echo "==> ${result:-no TEI_GAME line within ${TIMEOUT}s}"
 [[ "$result" == "TEI_GAME PASS"* ]]
