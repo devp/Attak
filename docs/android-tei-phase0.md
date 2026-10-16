@@ -1,6 +1,24 @@
 # Android TEI via bundled syntaks: Phase 0 findings
 
-Status: items 1–2 answered here; 3–5 need the first CI run and a phone.
+Status: 1–5 all confirmed in CI, including on an Android x86_64 emulator (API 34).
+Still to do: a real arm64 phone (the diagnostics screen).
+
+## Emulator evidence (CI run 38927719389, job `emulator`)
+
+The x86_64 smoke-test APK, launched on the API 34 emulator, logged:
+
+    bundled engine directory: '/data/app/~~gtWUsGZ…==/gay.cyberwitch.teismoke-cASZ…==/lib/x86_64'
+    -rwxr-xr-x 1 system system  6266672 1981-01-01 01:01 libsyntaks.so
+    can_execute: 1
+    # spawning /data/app/…/lib/x86_64/libsyntaks.so
+    # pid 3454
+    > tei   < id name syntaks 0.1.0 … < teiok   > isready   < readyok
+    > go movetime 1000   < bestmove a6        (nps 317347, emulated)
+    TEI_SMOKE PASS
+
+So on Android: the plugin returns `nativeLibraryDir` (item 5), the libs are extracted
+there with mode 0755 (item 4), and `OS.execute_with_pipe` spawns the engine from it and
+talks TEI (item 3).
 
 ## 1. Upstream syntaks runs on ARM unmodified: yes
 
@@ -27,7 +45,7 @@ The node counts are identical, so the scalar paths search exactly the same as th
 ones. The aarch64 binary also completed `tei`/`isready`/`go movetime` under qemu.
 `cargo check --target aarch64-linux-android` passes.
 
-## 2. syntaks builds as an Android executable: yes (locally); CI pending
+## 2. syntaks builds as an Android executable: yes
 
 - `target-cpu=native` comes from upstream `.cargo/config.toml` `[build] rustflags`.
   Cargo prefers `target.<triple>.rustflags`, so `CARGO_TARGET_<TRIPLE>_RUSTFLAGS`
@@ -40,10 +58,12 @@ ones. The aarch64 binary also completed `tei`/`isready`/`go movetime` under qemu
   1.97.0 builds. Pinned in CI as `RUST_TOOLCHAIN`.
 - Pinned to `5e68540c52080ec9b1dacdb3d596c73a40c43b18`. The script refuses a checkout
   at another commit or with local edits.
-- `file`/`readelf -d` output for the Android builds goes into the CI log. The NDK isn't
-  reachable from the dev container, so this hasn't been seen yet.
+- The `file`/`readelf -d` output for both Android builds is in the `apk` job log
+  ("Build syntaks"). The APKs carry `lib/arm64-v8a/libsyntaks.so` and
+  `lib/x86_64/libsyntaks.so` (about 6.2 MB each, deflated, so legacy packaging is in
+  effect), and the manifest says `extractNativeLibs=true`.
 
-## 3. `OS.execute_with_pipe` on Android (Godot 4.4.1): yes by source; device check pending
+## 3. `OS.execute_with_pipe` on Android (Godot 4.4.1): yes (emulator)
 
 `OS_Android` overrides only `execute` and `create_process`, and only for its own
 `ANDROID_EXEC_PATH`. `execute_with_pipe` is the generic `OS_Unix` implementation:
@@ -52,7 +72,7 @@ ones. The aarch64 binary also completed `tei`/`isready`/`go movetime` under qemu
 Reproduced on desktop with a non-executable file. The diagnostics screen shows exactly
 that line and "exit code 9" if Android refuses the exec.
 
-## 4. Bundling an executable Android will exec: plugin route implemented; CI pending
+## 4. Bundling an executable Android will exec: yes, via the v2 plugin (emulator)
 
 - v2 plugin AAR (`android-plugin/`) with `jniLibs/<abi>/libsyntaks.so`, registered via
   `org.godotengine.plugin.v2.AttakEngines`. Handed to Gradle by an editor export plugin
@@ -65,10 +85,21 @@ that line and "exit code 9" if Android refuses the exec.
   the lib's size and storage method.
 - Template: installed headlessly with `--install-android-build-template` (4.4.1 CLI flag),
   after `rm -rf android/`, so every build uses a pristine template that is never edited.
-- Note: Godot 4.4.1's template pins `ndkVersion 23.2.8568313`. If the runner lacks that
-  NDK, expect AGP to warn and skip stripping, not fail. To confirm on the first run.
+- Godot 4.4.1's template pins `ndkVersion 23.2.8568313`. The runner doesn't have it,
+  and the Gradle build succeeds anyway.
+- Gotcha found in CI: Godot 4.4.1 refuses *non-Gradle* Android exports while any export
+  plugin supports Android ("Use Gradle Build" must be enabled to use the plugins), and
+  it asks without naming the preset. The export plugin therefore claims Android only
+  when its AAR exists, and `build-apk.sh` sets `ATTAK_SKIP_ENGINE_PLUGIN=1` for
+  non-Gradle presets, so the universal APK still builds.
 
-## 5. Finding nativeLibraryDir from GDScript: plugin method
+## 5. Finding nativeLibraryDir from GDScript: plugin method (emulator)
+
+Gotcha found in CI: Godot's `FileAccess.file_exists` returns false for files in
+`nativeLibraryDir`. Its Android `FileAccessHandler` only knows app, assets and shared
+storage, and classifies `/data/app/...` as `StorageScope.UNKNOWN`. So the plugin also
+provides `fileExists(path)`, and `BundledEngines.exists()` uses it.
+
 
 `Engine.get_singleton("AttakEngines").getNativeLibraryDir()` returns
 `getActivity().getApplicationInfo().nativeLibraryDir`. Also `canExecute(path)`, because
