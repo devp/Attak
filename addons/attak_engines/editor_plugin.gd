@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 ## Hands the AttakEngines AAR (built by tools/build-plugin.sh) to Godot's Gradle
-## Android build. Presets without "Use Gradle Build" ignore it.
+## Android build.
 
 var _export_plugin: AndroidExport
 
@@ -23,13 +23,16 @@ class AndroidExport extends EditorExportPlugin:
 	func _get_name() -> String:
 		return "AttakEngines"
 
+	# Godot 4.4 refuses a non-Gradle Android export while any export plugin
+	# supports Android, and asks without saying which preset is being exported.
+	# So only claim Android when there's an AAR to hand over, and let
+	# tools/build-apk.sh switch this off (ATTAK_SKIP_ENGINE_PLUGIN=1) for the
+	# non-Gradle presets. Without the AAR, Gradle builds just lack the engines;
+	# build-apk.sh's EXPECT_LIBS check catches that where they're required.
 	func _supports_platform(platform: EditorExportPlatform) -> bool:
-		return platform.get_os_name() == "Android"
+		return platform.get_os_name() == "Android" \
+			and OS.get_environment("ATTAK_SKIP_ENGINE_PLUGIN").is_empty() \
+			and FileAccess.file_exists("res://addons/" + AAR)
 
 	func _get_android_libraries(platform: EditorExportPlatform, debug: bool) -> PackedStringArray:
-		if not FileAccess.file_exists("res://addons/" + AAR):
-			# Not fatal here: a non-Gradle export never uses it. tools/build-apk.sh
-			# checks the APK for the engines when they're expected.
-			push_warning("AttakEngines: %s not built; exporting without bundled engines" % AAR)
-			return PackedStringArray()
 		return PackedStringArray([AAR])

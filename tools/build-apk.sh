@@ -156,7 +156,11 @@ echo "==> importing resources"
 "$GODOT" --headless --import
 
 extra_args=()
-if [ "$use_gradle" = true ]; then
+if [ "$use_gradle" != true ]; then
+	# Godot rejects a non-Gradle export while any Android export plugin is
+	# active; see addons/attak_engines/editor_plugin.gd.
+	export ATTAK_SKIP_ENGINE_PLUGIN=1
+else
 	# Always a clean copy of the template that matches this Godot, so nothing
 	# hand-edited (or left over from another version) can leak into a build.
 	echo "==> installing a fresh Android build template (Gradle preset)"
