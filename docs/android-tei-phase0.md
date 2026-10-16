@@ -81,8 +81,10 @@ notes that 4.4.1 ships an `AndroidRuntime` singleton, a JNI-free fallback if eve
 
 - syntaks supports 6x6 only, with komi fixed at 2 (`HalfKomi` min = max = 4). Other
   sizes or komi produce only a stderr message (`Only 6x6 supported`,
-  `Unsupported komi value`), and the engine keeps playing 6x6 / komi 2. The TEI menu must
-  constrain size and komi for bundled syntaks.
+  `Unsupported komi value`), and the engine keeps playing 6x6 / komi 2.
+  **Decision (Dev):** keep it simple. Before starting, if the chosen engine is bundled
+  syntaks and the game isn't 6x6 with komi 2, show an error and don't start. The limits
+  live in the bundled-engine manifest entry, not in a name check.
 - When the bot plays white, `TEInterface` sends `position tps startpos`. syntaks rejects
   it (`Failed to parse TPS`) but is already at startpos after `teinewgame`, so play is
   correct. Harmless, though only by accident.
