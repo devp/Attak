@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://blnwws40ddesf"]
+[gd_scene load_steps=18 format=3 uid="uid://blnwws40ddesf"]
 
 [ext_resource type="Script" uid="uid://duirbrtiw270w" path="res://src/UI/Selector.gd" id="1_co0ct"]
 [ext_resource type="Theme" uid="uid://3w4qd4ooj08t" path="res://assets/Theme/baseTheme.tres" id="2_3pers"]
@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" uid="uid://dxpjihu0jl61k" path="res://scenes/UI/JoinGame.tscn" id="8_dpnug"]
 [ext_resource type="PackedScene" uid="uid://c7t0t4lbjup7v" path="res://scenes/GameUI.tscn" id="9_6h3q2"]
 [ext_resource type="PackedScene" uid="uid://7hykyeloohuo" path="res://scenes/UI/TEI.tscn" id="9_fqwg7"]
+[ext_resource type="PackedScene" path="res://scenes/UI/Bot.tscn" id="13_botui"]
 [ext_resource type="PackedScene" uid="uid://dmsu7yb0okn3i" path="res://scenes/UI/NewScratch.tscn" id="10_fcyw3"]
 [ext_resource type="PackedScene" uid="uid://bc07ynx8oxnsa" path="res://scenes/UI/WatchList.tscn" id="11_evw8m"]
 [ext_resource type="PackedScene" uid="uid://cc4qhu7nmhb1t" path="res://scenes/UI/OldGames.tscn" id="12_tith6"]
@@ -115,6 +116,9 @@ layout_mode = 2
 layout_mode = 2
 button = NodePath("../tabBar/Play/SubTabs/Join")
 
+[node name="Bot" parent="." instance=ExtResource("13_botui")]
+layout_mode = 2
+
 [node name="TEI" parent="." instance=ExtResource("9_fqwg7")]
 layout_mode = 2
 
@@ -202,6 +206,11 @@ text = "New Game
 layout_mode = 2
 theme_type_variation = &"TabButton"
 text = "Join (0)"
+
+[node name="Bot" type="Button" parent="tabBar/Play/SubTabs"]
+layout_mode = 2
+theme_type_variation = &"TabButton"
+text = "Vs Bot"
 
 [node name="TEI" type="Button" parent="tabBar/Play/SubTabs"]
 layout_mode = 2

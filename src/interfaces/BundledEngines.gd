@@ -5,22 +5,15 @@ class_name BundledEngines
 ## On Android, user-picked files can't be executed (W^X since targetSdk 29), but
 ## the app's nativeLibraryDir can: Android extracts lib/<abi>/lib*.so from the APK
 ## there with exec permission. So engines are packaged as lib<name>.so (still
-## ordinary executables) by the AttakEngines plugin, and found again here.
+## ordinary executables; see addons/attak_engines) and found again here.
 
-## name: shown in the TEI tab.  file: inside the bundled-engine directory.
-## sizes / komi (optional): the only board sizes and komi the engine plays. An
-## engine given anything else may carry on regardless (syntaks does), leaving it
-## and the board disagreeing about the game, so the TEI tab refuses to start.
+## name: shown in the Vs Bot tab.  file: inside the bundled-engine directory.
+## sizes / komi: the board sizes and komi the engine plays. The Vs Bot tab only
+## offers those -- an engine given anything else may carry on regardless
+## (syntaks does), leaving it and the board disagreeing about the game.
 const MANIFEST: Array[Dictionary] = [
 	{"name": "syntaks", "file": "libsyntaks.so", "sizes": [6], "komi": [2.0]},
 ]
-
-## Name of the Android plugin singleton (see android-plugin/).
-const PLUGIN := "AttakEngines"
-
-
-static func plugin():
-	return Engine.get_singleton(PLUGIN) if Engine.has_singleton(PLUGIN) else null
 
 
 ## Where bundled engines live on this platform, or "" if nowhere.
@@ -28,8 +21,7 @@ static func plugin():
 ## there, so tests can run the bundled-engine path.
 static func directory() -> String:
 	if OS.get_name() == "Android":
-		var p = plugin()
-		return p.getNativeLibraryDir() if p != null else ""
+		return native_library_dir()
 	return OS.get_environment("ATTAK_ENGINE_DIR")
 
 
@@ -46,37 +38,23 @@ static func list() -> Array[Dictionary]:
 	return found
 
 
-## Why `engine` (a list() entry) can't play this game, or "" if it can.
-static func unsupported(engine: Dictionary, size: int, komi: float) -> String:
-	var sizes: Array = engine.get("sizes", [])
-	var komis: Array = engine.get("komi", [])
-	if (sizes.is_empty() or size in sizes) and (komis.is_empty() or komi in komis):
+## Android's nativeLibraryDir, read off where Godot's own library was loaded
+## from. Godot has no API for it, and its Android FileAccess can't open /proc,
+## so ask grep. "" if the libraries weren't extracted (then there is no such
+## directory, and nothing could be executed from one anyway).
+static func native_library_dir() -> String:
+	var out := []
+	OS.execute("grep", ["-m1", "libgodot_android.so", "/proc/%d/maps" % OS.get_process_id()], out)
+	var line: String = out[0].strip_edges() if not out.is_empty() else ""
+	var at := line.find("/")
+	if at < 0 or ".apk" in line:
 		return ""
-	var parts := PackedStringArray()
-	if not sizes.is_empty():
-		parts.append("/".join(sizes.map(func(s): return "%dx%d" % [s, s])))
-	if not komis.is_empty():
-		parts.append("komi " + " or ".join(komis.map(func(k): return str(int(k)) if k == int(k) else str(k))))
-	return "%s only plays %s." % [engine["name"], " with ".join(parts)]
+	return line.substr(at).get_base_dir()
 
 
 ## Whether a file exists. On Android, Godot's FileAccess reports every path
-## outside app/shared storage as missing -- nativeLibraryDir included -- so ask
-## Java there.
+## outside app/shared storage as missing -- nativeLibraryDir included -- so ask ls.
 static func exists(path: String) -> bool:
-	var p = plugin()
-	if p != null:
-		return p.fileExists(path)
+	if OS.get_name() == "Android":
+		return OS.execute("ls", [path]) == 0
 	return FileAccess.file_exists(path)
-
-
-## Whether the OS would let this process exec the file. FileAccess can't answer
-## this on Android (its permission query returns 0 there), so ask Java.
-## Returns -1 when it can't tell.
-static func can_execute(path: String) -> int:
-	var p = plugin()
-	if p != null:
-		return 1 if p.canExecute(path) else 0
-	if OS.get_name() != "Android":
-		return 1 if FileAccess.get_unix_permissions(path) & 0x49 else 0 # 0o111
-	return -1

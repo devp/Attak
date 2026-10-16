@@ -1,7 +1,10 @@
 @tool
 extends EditorPlugin
-## Hands the AttakEngines AAR (built by tools/build-plugin.sh) to Godot's Gradle
-## Android build.
+## Puts the bundled TEI engines (src/interfaces/BundledEngines.gd) into Android
+## exports, as lib/<abi>/lib<name>.so. Android extracts those to the app's
+## nativeLibraryDir with exec permission -- the one place it lets an app run its
+## own executables from -- because Godot's prebuilt APK template uses legacy
+## (extracted) native-library packaging. No Gradle build is needed.
 
 var _export_plugin: AndroidExport
 
@@ -17,22 +20,21 @@ func _exit_tree() -> void:
 
 
 class AndroidExport extends EditorExportPlugin:
-	## Relative to res://addons/, as _get_android_libraries expects.
-	const AAR := "attak_engines/bin/AttakEngines.aar"
+	## Built by tools/build-syntaks.sh and copied here (gitignored): <abi>/lib*.so.
+	const BIN_DIR := "res://addons/attak_engines/bin"
 
 	func _get_name() -> String:
 		return "AttakEngines"
 
-	# Godot 4.4 refuses a non-Gradle Android export while any export plugin
-	# supports Android, and asks without saying which preset is being exported.
-	# So only claim Android when there's an AAR to hand over, and let
-	# tools/build-apk.sh switch this off (ATTAK_SKIP_ENGINE_PLUGIN=1) for the
-	# non-Gradle presets. Without the AAR, Gradle builds just lack the engines;
-	# build-apk.sh's EXPECT_LIBS check catches that where they're required.
-	func _supports_platform(platform: EditorExportPlatform) -> bool:
-		return platform.get_os_name() == "Android" \
-			and OS.get_environment("ATTAK_SKIP_ENGINE_PLUGIN").is_empty() \
-			and FileAccess.file_exists("res://addons/" + AAR)
-
-	func _get_android_libraries(platform: EditorExportPlatform, debug: bool) -> PackedStringArray:
-		return PackedStringArray([AAR])
+	func _export_begin(features: PackedStringArray, is_debug: bool, path: String, flags: int) -> void:
+		if get_export_platform().get_os_name() != "Android":
+			return
+		for abi in ["arm64-v8a", "x86_64"]:
+			# Only for the ABIs this preset ships, so an engine never sits beside
+			# an app build that can't load the rest of the ABI's libraries.
+			if not get_option("architectures/" + abi):
+				continue
+			var dir := BIN_DIR.path_join(abi)
+			for file in DirAccess.get_files_at(dir):
+				if file.begins_with("lib") and file.ends_with(".so"):
+					add_shared_object(dir.path_join(file), PackedStringArray([abi]), "")

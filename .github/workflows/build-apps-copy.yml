@@ -1,8 +1,9 @@
 name: "Build apps (copy)"
 
-# Bundled-engine Android builds: upstream syntaks, unmodified, built as a plain
-# executable and shipped inside the APK via the AttakEngines Android plugin, so
-# the TEI tab can spawn it with OS.execute_with_pipe. See tools/build-*.sh.
+# Android builds with a bundled engine: upstream syntaks, unmodified, built as a
+# plain executable and shipped in the APK as lib/<abi>/libsyntaks.so (see
+# addons/attak_engines), so the Vs Bot tab can spawn it with
+# OS.execute_with_pipe. See tools/build-syntaks.sh and tools/build-apk.sh.
 
 env:
   GODOT_VERSION: 4.4.1
@@ -37,13 +38,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-
-      # Gradle for the plugin AAR. Also caches ~/.gradle, which the Godot
-      # build template's own Gradle wrapper shares.
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.5"
 
       - name: Cache Godot and export templates
         id: godot-cache
@@ -96,6 +90,7 @@ jobs:
             build/engines/net
           key: syntaks-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('tools/build-syntaks.sh') }}
 
+      # The Android builds land where addons/attak_engines picks them up.
       - name: Build syntaks (unmodified upstream)
         run: |
           set -eux
@@ -103,19 +98,16 @@ jobs:
           # Prove nothing in the checkout was edited.
           git -C build/engines/src status --porcelain --untracked-files=no
           git -C build/engines/src log -1 --format='syntaks %H %s'
+          mkdir -p addons/attak_engines/bin
+          cp -r build/engines/arm64-v8a build/engines/x86_64 addons/attak_engines/bin/
 
-      - name: Build AttakEngines plugin AAR
-        run: tools/build-plugin.sh build/engines
-
-      # Desktop end-to-end against a native x86_64 syntaks: the app's spawn
-      # path (EngineProbe -> OS.execute_with_pipe), then a full 6x6 game
-      # through the TEI tab, with ATTAK_ENGINE_DIR standing in for Android's
+      # Desktop end-to-end against a native x86_64 syntaks: a full 6x6 game
+      # through the Vs Bot tab, with ATTAK_ENGINE_DIR standing in for Android's
       # nativeLibraryDir. Run with the editor binary so GameState asserts are on.
       - name: Run tests
         run: |
           export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           "$GODOT" --headless --import
-          "$GODOT" --headless tools/teiSmokeTest.tscn -- --engine="$PWD/build/engines/host/syntaks"
           mkdir -p build/engines/desktop
           cp build/engines/host/syntaks build/engines/desktop/libsyntaks.so
           ATTAK_ENGINE_DIR="$PWD/build/engines/desktop" \
@@ -124,20 +116,18 @@ jobs:
       - name: Build APKs
         run: |
           export GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
-          # The one to sideload: arm64, Gradle build, syntaks bundled.
-          PRESET="Android arm64 (bundled engines)" RELEASE=1 \
+          # The existing "Android" preset (arm64 + armv7). syntaks rides along
+          # on arm64 only; armv7 devices just don't get the Vs Bot tab.
+          PRESET="Android" RELEASE=1 \
           EXPECT_LIBS="arm64-v8a/libsyntaks.so" \
-            tools/build-apk.sh "$PWD/build/android/Attak_arm64_tei.apk"
+            tools/build-apk.sh "$PWD/build/android/Attak.apk"
 
-          # For the emulator job: x86_64, boots straight into the smoke test.
+          # For the emulator job: a CI-only x86_64 copy of that preset which
+          # boots straight into the full-game test (not committed).
+          tools/smoke-preset.py
           PRESET="Android x86_64 (TEI smoke test)" \
           EXPECT_LIBS="x86_64/libsyntaks.so" \
             tools/build-apk.sh "$PWD/build/smoke/Attak_x86_64_tei_smoke.apk"
-
-          # The existing broad-compatibility build (both ABIs, no Gradle, no
-          # bundled engines), kept until the bundled build is proven on a device.
-          PRESET="Android" RELEASE=1 \
-            tools/build-apk.sh "$PWD/build/android/Attak_universal.apk"
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
@@ -161,10 +151,10 @@ jobs:
           prerelease: true
           fail_on_unmatched_files: true
 
-  # Installs the x86_64 smoke-test APK on an emulator and checks the bundled
-  # engine really spawns and answers there, then plays a full 6x6 game against
-  # it through the TEI tab. Catches packaging and exec
-  # regressions without a phone; arm64 still needs a real device.
+  # Installs the x86_64 smoke-test APK on an emulator, where it plays a full
+  # 6x6 game against the bundled engine through the Vs Bot tab. Catches
+  # packaging and exec regressions without a phone; arm64 still needs a real
+  # device.
   emulator:
     needs: apk
     runs-on: ubuntu-latest

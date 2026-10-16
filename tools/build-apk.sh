@@ -1,28 +1,26 @@
 #!/usr/bin/env bash
 # Build an Android APK for Attak, headlessly.
 #
-# Two kinds of preset:
-#   - non-Gradle ("Android"): Godot re-signs its prebuilt android_*.apk template.
-#     Needs only apksigner from build-tools and a JDK for keytool.
-#   - Gradle ("Android arm64 (bundled engines)", "Android x86_64 (TEI smoke
-#     test)"): Godot runs a Gradle build from its Android build template, which
-#     is how the AttakEngines plugin (and the engines inside it) get in. The
-#     template is reinstalled fresh from the export templates on every build and
-#     never edited. Needs the Android SDK platform too, and network for Gradle.
+# The Android presets use Godot's prebuilt android_debug.apk / android_release.apk
+# templates (gradle_build/use_gradle_build=false), so this needs no Gradle, no NDK
+# and no Android platform SDK -- only apksigner and aapt2 from build-tools, plus
+# a JDK for keytool. Bundled engines are added by addons/attak_engines.
 #
 # Usage:  tools/build-apk.sh [output.apk]
 #
 # Environment:
 #   GODOT          path to the Godot 4.4.1 editor binary   (default: godot)
 #   ANDROID_HOME   Android SDK root                        (default: $ANDROID_SDK_ROOT, then /opt/android-sdk)
-#   JAVA_HOME      JDK 17 root                             (default: derived from `java`)
+#   JAVA_HOME      JDK root                                (default: derived from `java`)
 #   PRESET         export preset name                      (default: Android)
 #   RELEASE        set to 1 to export release instead of debug. Release builds are
 #                  smaller, but strip asserts -- prefer debug while testing game
 #                  logic, since src/Logic/gameState.gd relies on assertions.
 #   EXPECT_LIBS    space-separated <abi>/<file> entries that must be in the APK's
 #                  lib/ at non-zero size and extracted at install, e.g.
-#                  "arm64-v8a/libsyntaks.so". Fails the build otherwise.
+#                  "arm64-v8a/libsyntaks.so". Fails the build otherwise. Godot
+#                  only warns when it can't place a library, so this is what
+#                  makes a missing engine fail CI.
 
 set -euo pipefail
 
@@ -51,22 +49,6 @@ templates_dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable
 template=$([ "$RELEASE" = 1 ] && echo android_release.apk || echo android_debug.apk)
 [ -f "$templates_dir/$template" ] || die \
 	"missing $templates_dir/$template -- install the export templates for $GODOT_VERSION"
-
-# Read the preset's own settings, so callers can't get them out of step.
-preset_option() {
-	python3 - "$PROJECT_ROOT/export_presets.cfg" "$PRESET" "$1" <<'PY'
-import re, sys
-path, name, key = sys.argv[1:4]
-text = open(path).read()
-for m in re.finditer(r'^\[preset\.(\d+)\]\n(.*?)(?=^\[preset\.\d+\]\n|\Z)', text, re.M | re.S):
-    if re.search(r'^name="%s"$' % re.escape(name), m.group(2), re.M):
-        o = re.search(r'^%s=(.*)$' % re.escape(key), m.group(2), re.M)
-        print(o.group(1) if o else "")
-        sys.exit(0)
-sys.exit("no export preset named %r" % name)
-PY
-}
-use_gradle="$(preset_option gradle_build/use_gradle_build)"
 
 [ -d "$ANDROID_HOME/build-tools" ] || die "no build-tools under $ANDROID_HOME (need apksigner)"
 
@@ -155,26 +137,13 @@ cd "$PROJECT_ROOT"
 echo "==> importing resources"
 "$GODOT" --headless --import
 
-extra_args=()
-if [ "$use_gradle" != true ]; then
-	# Godot rejects a non-Gradle export while any Android export plugin is
-	# active; see addons/attak_engines/editor_plugin.gd.
-	export ATTAK_SKIP_ENGINE_PLUGIN=1
-else
-	# Always a clean copy of the template that matches this Godot, so nothing
-	# hand-edited (or left over from another version) can leak into a build.
-	echo "==> installing a fresh Android build template (Gradle preset)"
-	rm -rf android
-	extra_args+=(--install-android-build-template)
-fi
-
-# The presets' own export_path points outside the repo (../attak-Build/...) or
-# is empty, so always pass an explicit absolute output path.
+# The presets' own export_path points outside the repo (../attak-Build/...), so
+# always pass an explicit absolute output path.
 mkdir -p "$(dirname "$OUTPUT")"
 touch "$(dirname "$OUTPUT")/.gdignore"
 mode=$([ "$RELEASE" = 1 ] && echo --export-release || echo --export-debug)
-echo "==> exporting $OUTPUT  (preset: $PRESET, $mode, gradle: ${use_gradle:-false})"
-"$GODOT" --headless "${extra_args[@]}" "$mode" "$PRESET" "$OUTPUT"
+echo "==> exporting $OUTPUT  (preset: $PRESET, $mode)"
+"$GODOT" --headless "$mode" "$PRESET" "$OUTPUT"
 
 [ -f "$OUTPUT" ] || die "export reported success but produced no APK"
 
@@ -189,8 +158,7 @@ if [ -n "$EXPECT_LIBS" ]; then
 	extract="$("$BUILD_TOOLS/aapt2" dump xmltree --file AndroidManifest.xml "$OUTPUT" | grep 'extractNativeLibs' || true)"
 	echo "    manifest: ${extract:-no extractNativeLibs attribute (defaults to true)}"
 	if echo "$extract" | grep -qE '=(false|0x0+)\b'; then
-		die "the APK sets extractNativeLibs=false; bundled engines would not be on disk to exec.
-  Set gradle_build/compress_native_libraries=true on the preset."
+		die "the APK sets extractNativeLibs=false; bundled engines would not be on disk to exec"
 	fi
 	for lib in $EXPECT_LIBS; do
 		# unzip -v columns: Length Method Size Cmpr Date Time CRC Name

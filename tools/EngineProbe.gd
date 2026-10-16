@@ -1,16 +1,13 @@
 extends RefCounted
 class_name EngineProbe
-## Spawns a TEI engine and records every line exchanged with it.
+## Spawns a TEI engine and records every line exchanged with it, for tests.
 ##
-## Used by the engine diagnostics screen and the headless smoke test, so both
-## exercise exactly the same spawn path TEInterface uses (OS.execute_with_pipe).
-## TEInterface remains the client that actually plays games.
+## tools/teiGameTest uses one as the stand-in human. It spawns the same way
+## TEInterface does (OS.execute_with_pipe), but isn't tied to GameLogic.
 
 ## Each entry is "> sent", "< stdout", "! stderr" or "# note".
 var transcript := PackedStringArray()
 var pid := -1
-var bot_name := ""
-var last_info := ""
 
 var _stdio: FileAccess
 var _stderr: FileAccess
@@ -80,24 +77,6 @@ func handshake(timeout_s := 10.0) -> bool:
 	return not (await wait_for("readyok", timeout_s)).is_empty()
 
 
-## Searches the 6x6 start position for `movetime_ms`. Returns the bestmove line, or "".
-func think(movetime_ms: int) -> String:
-	send("teinewgame 6")
-	send("isready")
-	if (await wait_for("readyok", 10.0)).is_empty():
-		return ""
-	send("position startpos")
-	send("go movetime %d" % movetime_ms)
-	return await wait_for("bestmove", movetime_ms / 1000.0 + 15.0)
-
-
-## A named field from the last `info` line, e.g. info_field("nps").
-func info_field(key: String) -> String:
-	var parts := last_info.split(" ")
-	var i := parts.find(key)
-	return parts[i + 1] if i >= 0 and i + 1 < parts.size() else ""
-
-
 func stop() -> void:
 	if running():
 		send("quit")
@@ -131,11 +110,6 @@ func _drain() -> Array:
 	_mutex.unlock()
 	for entry in got:
 		transcript.append("%s %s" % entry)
-		if entry[0] == "<":
-			if entry[1].begins_with("info "):
-				last_info = entry[1]
-			elif entry[1].begins_with("id name "):
-				bot_name = entry[1].substr(8)
 	return got
 
 
