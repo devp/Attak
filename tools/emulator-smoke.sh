@@ -14,10 +14,18 @@ set -euo pipefail
 APK="$1"
 TIMEOUT="${2:-180}"
 PKG="gay.cyberwitch.teismoke"
+LOG="$(mktemp)"
 
 adb wait-for-device
 adb install -r -g "$APK"
+
+# Stream logcat to a file from before launch. Reading the device buffer back
+# afterwards (logcat -d) can miss the result: once the test quits, Godot may be
+# re-initialised in the same process and flood the buffer with errors.
 adb logcat -c
+adb logcat -v time -s godot:V AndroidRuntime:V DEBUG:V libc:V ActivityManager:I > "$LOG" &
+logcat_pid=$!
+trap 'kill $logcat_pid 2>/dev/null || true' EXIT
 
 activity="$(adb shell cmd package resolve-activity --brief "$PKG" | tail -1 | tr -d '\r')"
 echo "==> launching $activity"
@@ -25,12 +33,14 @@ adb shell am start -n "$activity"
 
 result=""
 for _ in $(seq 1 "$((TIMEOUT / 3))"); do
-	result="$(adb logcat -d -s godot:V | grep -oE 'TEI_SMOKE (PASS|FAIL.*)' | head -1 || true)"
+	result="$(grep -oE 'TEI_SMOKE (PASS|FAIL.*)' "$LOG" | head -1 || true)"
 	[ -n "$result" ] && break
 	sleep 3
 done
+sleep 2
 
-echo "==> godot log"
-adb logcat -d -s godot:V | grep -v '< info' | tail -60
+echo "==> log ($(wc -l < "$LOG") lines; engine search 'info' lines and repeated GL/re-init errors omitted)"
+grep -vE '< info |GLES3|shader|GL_MAX|_compile_specialization|_display_error_with_code|Method/function failed|utility_function|godot   : (1: )?$|already exist|singleton != nullptr|not supported\.$|\(core/' "$LOG" | head -200
+
 echo "==> ${result:-no TEI_SMOKE line within ${TIMEOUT}s}"
 [[ "$result" == "TEI_SMOKE PASS" ]]
