@@ -80,16 +80,3 @@ static func can_execute(path: String) -> int:
 	if OS.get_name() != "Android":
 		return 1 if FileAccess.get_unix_permissions(path) & 0x49 else 0 # 0o111
 	return -1
-
-
-## A second, plugin-free way to find nativeLibraryDir: the directory Godot's own
-## libgodot_android.so was mapped from. Only meaningful when native libraries are
-## extracted; when they're loaded straight from the APK, this names the APK.
-static func directory_from_maps() -> String:
-	var out := []
-	OS.execute("/system/bin/grep", ["-m1", "libgodot_android.so", "/proc/%d/maps" % OS.get_process_id()], out)
-	if out.is_empty():
-		return ""
-	var line: String = out[0].strip_edges()
-	var at := line.find("/")
-	return line.substr(at).get_base_dir() if at >= 0 else ""

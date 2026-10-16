@@ -1,7 +1,23 @@
-# Android TEI via bundled syntaks: Phase 0 findings
+# Android TEI via bundled syntaks: findings
 
-Status: 1–5 all confirmed in CI, including on an Android x86_64 emulator (API 34).
-Still to do: a real arm64 phone (the diagnostics screen).
+Status: done. Items 1–5 are confirmed in CI (desktop and an Android x86_64 emulator)
+and on a real arm64 phone. Phase 1 played a full 6x6 game against bundled syntaks
+through the TEI tab, on the emulator in CI and on the phone.
+
+## Phone evidence (arm64, Phase 0 diagnostics screen, 2026-10-16)
+
+    plugin AttakEngines: present
+    nativeLibraryDir (plugin):     '/data/app/~~v5mN…==/gay.cyberwitch.tei-zh2A…==/lib/arm64'
+    nativeLibraryDir (/proc maps): (same)
+    -rwxr-xr-x 1 system system  6223824 … libsyntaks.so
+    libsyntaks.so: exists=true can_execute=1
+    handshake: OK (syntaks 0.1.0)
+    go movetime 5000 -> bestmove a6, depth 16, 7,806,976 nodes, 1,560,510 nps
+
+So unmodified upstream syntaks, built for generic aarch64 (scalar paths), runs at about
+1.56M nps on that phone. That's faster than the x86-64-v2 desktop build here (about 1.29M).
+The diagnostics screen did its job and was removed afterwards; it's in git history
+at commit 05b4f73 (`src/UI/EngineDiagnostics.gd`).
 
 ## Emulator evidence (CI run 38927719389, job `emulator`)
 
@@ -69,8 +85,8 @@ ones. The aarch64 binary also completed `tei`/`isready`/`go movetime` under qemu
 `ANDROID_EXEC_PATH`. `execute_with_pipe` is the generic `OS_Unix` implementation:
 `pipe()` ×3, `fork()`, `dup2`, `execvp`. If `execvp` fails, the child prints
 `Could not create child process: <path>` to the stderr pipe and `SIGKILL`s itself.
-Reproduced on desktop with a non-executable file. The diagnostics screen shows exactly
-that line and "exit code 9" if Android refuses the exec.
+Reproduced on desktop with a non-executable file: `EngineProbe` reports exactly that
+line and "exit code 9" when an exec is refused.
 
 ## 4. Bundling an executable Android will exec: yes, via the v2 plugin (emulator)
 
@@ -104,11 +120,11 @@ provides `fileExists(path)`, and `BundledEngines.exists()` uses it.
 `Engine.get_singleton("AttakEngines").getNativeLibraryDir()` returns
 `getActivity().getApplicationInfo().nativeLibraryDir`. Also `canExecute(path)`, because
 Godot's Android `FileAccess` returns 0 for `get_unix_permissions` on absolute paths
-(`file_access_filesystem_jandroid.h`). The diagnostics screen cross-checks the directory
-against the one `libgodot_android.so` is mapped from (`/proc/<pid>/maps`). It also
-notes that 4.4.1 ships an `AndroidRuntime` singleton, a JNI-free fallback if ever needed.
+(`file_access_filesystem_jandroid.h`). On the phone, the plugin's answer matched the
+directory `libgodot_android.so` is mapped from (`/proc/<pid>/maps`). Godot 4.4.1 also
+ships an `AndroidRuntime` singleton, a JNI-free fallback if ever needed.
 
-## Notes for Phase 1
+## Phase 1 notes
 
 - syntaks supports 6x6 only, with komi fixed at 2 (`HalfKomi` min = max = 4). Other
   sizes or komi produce only a stderr message (`Only 6x6 supported`,
@@ -121,3 +137,10 @@ notes that 4.4.1 ships an `AndroidRuntime` singleton, a JNI-free fallback if eve
   correct. Harmless, though only by accident.
 - The spike APK uses package `gay.cyberwitch.tei` ("Attak TEI"), so it installs
   alongside any earlier `gay.cyberwitch` build signed with a different key.
+- Strength differs from the old GDExtension "Vs Bot" tab. That tab searched each move
+  from scratch, with 40,000 nodes ("Fast", the default) or 3 s ("Strong"). The TEI tab
+  keeps one engine process for the whole game and gives it a real clock
+  (`go wtime/btime` from "Bot Time"), so it plays much stronger. A node-limited "easy"
+  level would need `TEInterface` to send `go nodes N`; not done, since `TEInterface`
+  was to stay unchanged.
+- The TEI tab is still behind the experimental setting, as before.
