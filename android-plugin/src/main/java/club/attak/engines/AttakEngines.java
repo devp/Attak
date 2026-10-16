@@ -33,6 +33,16 @@ public class AttakEngines extends GodotPlugin {
         return dir == null ? "" : dir;
     }
 
+    /**
+     * Whether the file exists. Godot's own FileAccess can't answer this for the
+     * native library dir: its Android file handler only knows app and shared
+     * storage, and reports anything else (like /data/app/...) as missing.
+     */
+    @UsedByGodot
+    public boolean fileExists(String path) {
+        return new File(path).isFile();
+    }
+
     /** Whether this process may execute the file (access(2) with X_OK). */
     @UsedByGodot
     public boolean canExecute(String path) {

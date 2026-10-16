@@ -33,12 +33,17 @@ func run() -> String:
 		if arg.begins_with("--engine="):
 			path = arg.trim_prefix("--engine=")
 	if path.is_empty():
-		print("bundled engine directory: '%s'" % BundledEngines.directory())
+		var dir := BundledEngines.directory()
+		print("bundled engine directory: '%s'" % dir)
+		if not dir.is_empty():
+			var ls := []
+			OS.execute("ls", ["-l", dir], ls, true)
+			print("ls -l: ", "".join(ls).strip_edges())
 		var engines := BundledEngines.list()
 		if engines.is_empty():
 			return "no --engine given and no bundled engine found"
 		path = engines[0]["path"]
-	if not FileAccess.file_exists(path):
+	if not BundledEngines.exists(path):
 		return "no such file: " + path
 	print("can_execute: %d" % BundledEngines.can_execute(path))
 

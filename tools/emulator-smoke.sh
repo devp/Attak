@@ -32,12 +32,5 @@ done
 
 echo "==> godot log"
 adb logcat -d -s godot:V | grep -v '< info' | tail -60
-# Where Android put the engine, and with what permissions -- useful if the
-# spawn failed. run-as works because the smoke APK is a debug build.
-echo "==> nativeLibraryDir"
-adb shell pm dump "$PKG" | grep -m1 -E 'legacyNativeLibraryDir|nativeLibraryDir' || true
-libdir="$(adb shell pm dump "$PKG" | grep -m1 -oE 'nativeLibraryDir=\S+' | cut -d= -f2 | tr -d '\r' || true)"
-[ -n "$libdir" ] && adb shell ls -lZ "$libdir" || true
-
 echo "==> ${result:-no TEI_SMOKE line within ${TIMEOUT}s}"
 [[ "$result" == "TEI_SMOKE PASS" ]]

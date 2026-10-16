@@ -89,7 +89,7 @@ func _run_checks() -> void:
 		_log("ls -l %s  (exit %d):\n%s" % [dir, code, "".join(ls).strip_edges()])
 		for entry in BundledEngines.MANIFEST:
 			var p := dir.path_join(entry["file"])
-			_log("%s: exists=%s can_execute=%d" % [p, FileAccess.file_exists(p), BundledEngines.can_execute(p)])
+			_log("%s: exists=%s can_execute=%d" % [p, BundledEngines.exists(p), BundledEngines.can_execute(p)])
 
 	var path := _engine_path()
 	if path.is_empty():

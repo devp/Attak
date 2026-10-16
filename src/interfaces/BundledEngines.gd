@@ -36,9 +36,19 @@ static func list() -> Array[Dictionary]:
 		return found
 	for entry in MANIFEST:
 		var path := dir.path_join(entry["file"])
-		if FileAccess.file_exists(path):
+		if exists(path):
 			found.append({"name": entry["name"], "path": path})
 	return found
+
+
+## Whether a file exists. On Android, Godot's FileAccess reports every path
+## outside app/shared storage as missing -- nativeLibraryDir included -- so ask
+## Java there.
+static func exists(path: String) -> bool:
+	var p = plugin()
+	if p != null:
+		return p.fileExists(path)
+	return FileAccess.file_exists(path)
 
 
 ## Whether the OS would let this process exec the file. FileAccess can't answer
